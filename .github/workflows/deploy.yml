@@ -1,0 +1,51 @@
+# Builds the Ayudhas brand website (static export) and publishes it to GitHub Pages at ayudhas.com.
+# One-time setup: Settings → Pages → Source: GitHub Actions; Custom domain: ayudhas.com.
+# Optional repository variable API_BASE_URL (defaults to https://api.ayudhas.com) for the contact form.
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm test
+      - run: npm run build
+        env:
+          NEXT_PUBLIC_API_BASE_URL: ${{ vars.API_BASE_URL || 'https://api.ayudhas.com' }}
+      - name: Refuse to publish a bundle that points at localhost
+        run: "! grep -rl 'localhost:8000' out/_next"
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v4
+        with:
+          path: out
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

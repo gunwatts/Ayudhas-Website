@@ -1,0 +1,123 @@
+/* Ayudhas world. Layout concept: a night-sky map of tools. Each scene is a region of one continuous world;
+   glass panels float over it, and each destination keeps its own hue. Deliberately dark-only. */
+:root {
+  --night: #060818;
+  --deep: #0b0f2e;
+  --indigo: #161b4d;
+  --text: #eef1ff;
+  --muted: #a7aed6;
+  --faint: #6f77a8;
+  --blue: #5b8cff;
+  --cyan: #3fdcec;
+  --violet: #9b7bff;
+  --emerald: #3ddc97;
+  --amber: #f5b85c;
+  --glass: rgb(255 255 255 / 0.055);
+  --glass-strong: rgb(255 255 255 / 0.09);
+  --edge: rgb(255 255 255 / 0.13);
+  --edge-strong: rgb(255 255 255 / 0.24);
+  --shadow: 0 1px 0 rgb(255 255 255 / 0.06) inset, 0 20px 50px -20px rgb(0 0 0 / 0.7);
+  --radius: 22px;
+  --gutter: clamp(16px, 4vw, 40px);
+  --ease: cubic-bezier(0.22, 1, 0.36, 1);
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; scroll-padding-top: 84px; }
+body {
+  margin: 0;
+  background: var(--night);
+  color: var(--text);
+  font-family: var(--font-body), "Segoe UI", system-ui, sans-serif;
+  font-size: 1rem;
+  line-height: 1.65;
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+}
+/* The world behind every scene: two slow nebula glows and a faint star grain. */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background:
+    radial-gradient(60vmax 40vmax at 15% 8%, rgb(91 140 255 / 0.16), transparent 60%),
+    radial-gradient(50vmax 40vmax at 90% 30%, rgb(155 123 255 / 0.14), transparent 60%),
+    radial-gradient(60vmax 50vmax at 50% 110%, rgb(63 220 236 / 0.08), transparent 60%),
+    linear-gradient(180deg, var(--night), var(--deep) 45%, var(--night));
+}
+img { max-width: 100%; height: auto; display: block; }
+a { color: inherit; }
+button, input, select, textarea { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--cyan); outline-offset: 3px; border-radius: 8px; }
+::selection { background: rgb(91 140 255 / 0.4); }
+
+h1, h2, h3 { font-family: var(--font-display), "Segoe UI", system-ui, sans-serif; line-height: 1.08; margin: 0; text-wrap: balance; letter-spacing: -0.02em; }
+h2 { font-size: clamp(1.9rem, 4.6vw, 3.1rem); font-weight: 600; }
+h3 { font-size: 1.2rem; font-weight: 600; }
+p { margin: 0; }
+.wrap { width: min(1180px, 100%); margin-inline: auto; padding-inline: var(--gutter); }
+.label { font-family: var(--font-mono), ui-monospace, monospace; font-size: 0.74rem; letter-spacing: 0.16em; text-transform: uppercase; color: var(--muted); }
+.lede { color: var(--muted); font-size: 1.08rem; max-width: 62ch; }
+.grad { background: linear-gradient(100deg, var(--cyan), var(--blue) 45%, var(--violet)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+.skip { position: absolute; left: 12px; top: -60px; z-index: 100; padding: 10px 14px; border-radius: 10px; background: var(--blue); color: #fff; text-decoration: none; }
+.skip:focus { top: 12px; }
+
+/* ---------- glass system ---------- */
+.glass {
+  background: linear-gradient(160deg, var(--glass-strong), var(--glass));
+  border: 1px solid var(--edge);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  backdrop-filter: blur(14px) saturate(140%);
+  -webkit-backdrop-filter: blur(14px) saturate(140%);
+}
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .glass { background: rgb(22 27 77 / 0.92); }
+}
+/* Phones and small screens: a live blur on many panels is costly for mobile GPUs, so panels use a solid tint. */
+@media (max-width: 960px), (pointer: coarse) {
+  .glass { backdrop-filter: none; -webkit-backdrop-filter: none; background: linear-gradient(160deg, rgb(32 38 92 / 0.86), rgb(18 22 62 / 0.86)); }
+}
+
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 0.55rem;
+  min-height: 48px; padding: 0 1.4rem; border-radius: 999px; font-weight: 700; text-decoration: none;
+  border: 1px solid transparent; cursor: pointer; transition: transform 0.3s var(--ease), box-shadow 0.3s var(--ease), background 0.3s;
+}
+.btn-primary { background: linear-gradient(100deg, var(--blue), var(--violet)); color: #fff; box-shadow: 0 10px 30px -10px rgb(91 140 255 / 0.8); }
+.btn-primary:hover { transform: translateY(-2px); box-shadow: 0 16px 40px -12px rgb(155 123 255 / 0.9); }
+.btn-ghost { background: var(--glass); border-color: var(--edge-strong); color: var(--text); }
+.btn-ghost:hover { background: var(--glass-strong); transform: translateY(-2px); }
+.btn[aria-disabled="true"] { opacity: 0.6; cursor: default; transform: none; }
+
+.pill { display: inline-flex; align-items: center; gap: 0.45rem; padding: 0.3rem 0.75rem; border-radius: 999px; font-size: 0.78rem; font-weight: 700; border: 1px solid var(--edge); background: var(--glass); white-space: nowrap; }
+.pill::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; box-shadow: 0 0 10px currentColor; }
+.pill.live-web { color: var(--emerald); }
+.pill.android-testing { color: var(--amber); }
+.pill.planned { color: var(--violet); }
+
+/* ---------- scenes ---------- */
+.scene { position: relative; padding-block: clamp(88px, 12vw, 150px); }
+.scene-head { display: grid; gap: 1rem; margin-bottom: clamp(2rem, 5vw, 3.5rem); max-width: 760px; }
+
+/* Scroll-linked reveal, CSS only. Content is fully visible where scroll timelines are unsupported. */
+@media (prefers-reduced-motion: no-preference) {
+  @supports (animation-timeline: view()) {
+    .reveal { animation: rise linear both; animation-timeline: view(); animation-range: entry 0% cover 28%; }
+  }
+}
+@keyframes rise { from { opacity: 0; transform: translateY(28px) scale(0.985); } to { opacity: 1; transform: none; } }
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  *, *::before, *::after { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important; }
+}
+
+/* ---------- moved / not-found pages ---------- */
+.moved { min-height: 100svh; display: grid; place-content: center; gap: 1rem; padding-inline: var(--gutter); text-align: center; }
+.moved h1 { font-size: clamp(1.8rem, 5vw, 2.6rem); }
+.moved p { color: var(--muted); }
+.moved a { color: var(--cyan); }
