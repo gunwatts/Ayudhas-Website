@@ -1,8 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { DESTINATIONS } from "@/content/site";
+import { emit } from "@/lib/world-events";
+
+import { SplitHeading } from "./split-heading";
 
 const LIVE = DESTINATIONS.filter((d) => d.status !== "planned");
 const ANCHORS = [{ x: 18, y: 58 }, { x: 34, y: 34 }, { x: 50, y: 62 }, { x: 66, y: 40 }];
@@ -11,25 +14,27 @@ const OPEN_SLOTS = [{ x: 80, y: 22 }, { x: 84, y: 70 }, { x: 94, y: 46 }, { x: 7
 /** Scene 6: the map keeps growing. Open slots are unnamed on purpose: nothing is announced until it exists. */
 export function Future() {
   const [grown, setGrown] = useState(1);
+  // The 3D world shows the same number of empty orbits.
+  useEffect(() => emit("ayudhas:world-growth", { count: grown }), [grown]);
   return (
-    <section id="future" className="scene future" aria-labelledby="future-title">
+    <section id="future" className="scene future" aria-labelledby="future-title" data-chapter>
       <div className="wrap">
         <div className="scene-head reveal">
           <span className="label">What comes next</span>
-          <h2 id="future-title">A map with room to grow.</h2>
+          <SplitHeading id="future-title" parts={["A map with room to grow."]} />
           <p className="lede">
             New tools join the same constellation: same name, same design, one place to find them. There are no dates or
             features to announce yet, so the open places on the map stay unnamed.
           </p>
         </div>
         <div className="glass constellation reveal">
-          <svg viewBox="0 0 100 100" preserveAspectRatio="xMidYMid meet" role="img"
+          <svg viewBox="0 0 100 100" preserveAspectRatio="xMidYMid meet" role="img" data-growth={grown}
             aria-label={`${LIVE.length} tools on the map today and ${grown} open places for future tools`}>
             <defs>
               <radialGradient id="star-glow"><stop offset="0" stopColor="#fff" stopOpacity=".9" /><stop offset="1" stopColor="#fff" stopOpacity="0" /></radialGradient>
             </defs>
             {ANCHORS.slice(1).map((p, i) => (
-              <line key={i} x1={ANCHORS[i].x} y1={ANCHORS[i].y} x2={p.x} y2={p.y} className="c-line" />
+              <line key={i} x1={ANCHORS[i].x} y1={ANCHORS[i].y} x2={p.x} y2={p.y} className="c-line" pathLength={1} style={{ ["--i" as string]: i }} />
             ))}
             {OPEN_SLOTS.slice(0, grown).map((p, i) => (
               <g key={`slot-${i}`} className="c-slot">

@@ -95,6 +95,51 @@ test("with reduced motion, everything is still readable", async ({ browser }) =>
   await ctx.close();
 });
 
+test("the 3D world either starts or hands over to the 2D orbit, without errors", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.locator("html")).toHaveAttribute("data-world", /^(ready|fallback)$/, { timeout: 20_000 });
+  if ((await page.locator("html").getAttribute("data-world")) === "ready") {
+    await expect(page.locator(".world canvas")).toHaveAttribute("data-quality", /\d/);
+    await expect(page.locator(".orbit-world")).toBeHidden();
+  } else {
+    await expect(page.locator(".orbit-world canvas")).toBeVisible();
+    await expect(page.locator(".tool-tags")).toBeHidden();
+  }
+});
+
+test("headings revealed word by word keep their full accessible names", async ({ page }) => {
+  await page.goto("/");
+  for (const name of [
+    "An instrument in the hand of the one who uses it.",
+    "Every tool is a place you can visit.",
+    "Ayudhas Pro: tasks, time and Panchang in your pocket.",
+    "What a good tool feels like.",
+    "A map with room to grow.",
+  ]) await expect(page.getByRole("heading", { level: 2, name, exact: true })).toHaveCount(1);
+});
+
+test("a floating tool label opens that tool on the tools map", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.locator("html")).toHaveAttribute("data-world", /^(ready|fallback)$/, { timeout: 20_000 });
+  test.skip((await page.locator("html").getAttribute("data-world")) !== "ready", "the 3D world does not run in this browser");
+  const label = page.locator('[data-tool-tag="panchang"]');
+  await expect(label).toBeVisible({ timeout: 10_000 });
+  await label.focus();
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("group", { name: "Destinations" }).getByRole("button", { name: /Panchang/ })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.locator("article.destination").getByRole("heading", { name: "Panchang" })).toBeVisible();
+});
+
+test("the bar tucks away while reading down and returns on the way up", async ({ page, isMobile }) => {
+  test.skip(isMobile, "checked once, on desktop");
+  await page.goto("/");
+  const header = page.locator("header.nav");
+  await page.mouse.wheel(0, 2400);
+  await expect(header).toHaveAttribute("data-hidden", "true");
+  await page.mouse.wheel(0, -400);
+  await expect(header).not.toHaveAttribute("data-hidden", "true");
+});
+
 test("SEO files and metadata point at ayudhas.com", async ({ page, request }) => {
   await page.goto("/");
   await expect(page.locator('link[rel="canonical"]')).toHaveAttribute("href", "https://ayudhas.com/");

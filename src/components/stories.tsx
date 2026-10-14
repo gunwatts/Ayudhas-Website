@@ -5,6 +5,8 @@ import { useEffect, useRef, useState } from "react";
 import { STORIES } from "@/content/site";
 import { useInView, useReducedMotion } from "@/lib/motion";
 
+import { SplitHeading } from "./split-heading";
+
 /** Scene 5: short, illustrative journeys (not testimonials). Steps advance on their own while on screen. */
 export function Stories() {
   const [storyId, setStoryId] = useState(STORIES[0].id);
@@ -24,11 +26,11 @@ export function Stories() {
   const choose = (id: string) => { setStoryId(id); setStep(0); };
 
   return (
-    <section id="stories" className="scene stories" aria-labelledby="stories-title">
+    <section id="stories" className="scene stories" aria-labelledby="stories-title" data-chapter>
       <div className="wrap">
         <div className="scene-head reveal">
           <span className="label">The philosophy, in practice</span>
-          <h2 id="stories-title">What a good tool feels like.</h2>
+          <SplitHeading id="stories-title" parts={["What a good tool feels like."]} />
           <p className="lede">Four everyday situations and the tool that helps. These are illustrations, not customer stories.</p>
         </div>
         <div className="stories-grid" ref={ref}>

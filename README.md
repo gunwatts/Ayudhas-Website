@@ -6,14 +6,32 @@ https://finance.ayudhas.com.
 
 ## Stack
 - Next.js 16 static export (`out/`) on GitHub Pages, published by `.github/workflows/deploy.yml` on every push to `main`.
-- No UI or animation libraries: CSS (glass panels, scroll-linked reveals with `animation-timeline`), a Canvas 2D orbit
-  scene, and small React components. Everything respects `prefers-reduced-motion`; the canvas pauses off-screen.
+- One live 3D world behind the whole page (Three.js, no other UI or animation library). Native scroll drives a damped
+  camera through one composed shot per scene; the opening shows the Ayudhas mark with every tool on its orbit, later
+  scenes park it in their empty corner. Three.js loads in its own chunk after the page is idle, so it never delays
+  the first paint.
+- Everything else is CSS and small React components: word-by-word headings, reveals, glass panels, the tools map's
+  3D tilt, the sliding nav and tab pills.
 - The contact form posts to `https://api.ayudhas.com/api/v1/contact` (the Ayudhas backend). Messages are read on the
   private **Messages** page of Ayudhas Finance (staff accounts only).
 
+## Motion, performance and fallbacks
+- Reduced motion: the world shows still, composed frames that change only between scenes; reveals and loops stop.
+- Devices with Save-Data, under 2 GB of memory, no hardware WebGL 2 or a software renderer get the light 2D orbit
+  (`orbit-world.tsx`), which is also the poster while the 3D world loads.
+- The world pauses in hidden tabs, caps the pixel ratio (1.5 on phones, 2 elsewhere), runs ambient motion at 30 fps on
+  phones, and lowers its resolution on slow GPUs; if that is still too slow it sets `html.world-lite`, which turns
+  off the page's blur and grain. Scenes that are off screen pause their CSS animations.
+- Solids are shaded with a generated matcap instead of lights and an environment map, so shaders compile quickly.
+
 ## Where things are
 - `src/content/site.ts`: all wording about the brand, tools and statuses. Add a tool here first.
-- `src/components/`: one file per scene (`orbit-world`, `meaning`, `universe`, `pro`, `stories`, `future`, `contact`).
+- `src/components/`: one file per scene (`meaning`, `universe`, `pro`, `stories`, `future`, `contact`), plus the nav,
+  the chapter rail, `motion-director` (reveals, off-screen pausing, pointer spotlight and tilt) and `split-heading`.
+- `src/components/world/`: the 3D world. `chapters.ts` is the scene ledger (camera shot and world state per scene;
+  tune compositions there), `engine.ts` the renderer, scroll conductor and interactions, `objects.ts` and
+  `textures.ts` the procedural pieces. `src/lib/scroll-conductor.ts` holds the pure scroll maths (unit tested).
+- `.claude/skills/`: the design and motion skills used to build this (see its README for sources and licence).
 - `src/app/[...legacy]/`: old finance addresses on ayudhas.com forward to finance.ayudhas.com (query and #hash kept).
 - `public/`: `CNAME` (ayudhas.com), `og.png` share image, icons, Ayudhas Pro images from its store listing.
 

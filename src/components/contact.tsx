@@ -6,6 +6,7 @@ import { CONTACT_TOPICS, SITE } from "@/content/site";
 import { type ContactErrors, type ContactFields, sendContact, validateContact } from "@/lib/contact";
 
 import { type Prefill, PREFILL_EVENT } from "./pro";
+import { SplitHeading } from "./split-heading";
 
 const EMPTY: ContactFields = { name: "", email: "", topic: "", message: "", website: "" };
 type Status = { kind: "idle" } | { kind: "sending" } | { kind: "sent" } | { kind: "error"; message: string };
@@ -81,11 +82,11 @@ export function Contact() {
   const described = (k: keyof ContactErrors, hint = false) => (errors[k] ? `${id(k)}-error` : hint ? `${id(k)}-hint` : undefined);
 
   return (
-    <section id="contact" className="scene contact" aria-labelledby="contact-title">
+    <section id="contact" className="scene contact" aria-labelledby="contact-title" data-chapter>
       <div className="wrap contact-grid">
         <div className="contact-intro reveal">
           <span className="label">Contact the creator</span>
-          <h2 id="contact-title">Say hello, report a bug, or suggest the next tool.</h2>
+          <SplitHeading id="contact-title" parts={["Say hello, report a bug, or suggest the next tool."]} />
           <p className="lede">
             Questions, feedback, product ideas, collaborations and business inquiries are all welcome. Every message is read by
             the person who builds Ayudhas.

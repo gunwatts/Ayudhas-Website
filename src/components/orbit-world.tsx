@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from "react";
 
-import { useInView, useReducedMotion } from "@/lib/motion";
+import { useInView, useReducedMotion, useWorldStatus } from "@/lib/motion";
 
 type Glyph = "check" | "clock" | "moon" | "rupee" | "spark";
 type Tool = { glyph: Glyph; color: string; phase: number };
@@ -12,14 +12,17 @@ type Star = { x: number; y: number; z: number; tw: number };
 const css = (name: string) => getComputedStyle(document.documentElement).getPropertyValue(name).trim() || "#fff";
 
 /**
- * The gateway scene: a glowing core (Ayudhas) with tools on tilted orbits, over a parallax star field.
- * Canvas 2D only (no 3D engine). Runs only while visible; draws a single still frame for reduced motion.
+ * The gateway's 2D orbit: a glowing core (Ayudhas) with tools on tilted orbits, over a parallax star field.
+ * It is the still poster while the 3D world loads, and the animated scene on devices that do not run the 3D world.
+ * Runs only while visible; draws a single still frame for reduced motion.
  */
 export function OrbitWorld() {
   const wrapRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const reduce = useReducedMotion();
   const inView = useInView(wrapRef, "100px");
+  const status = useWorldStatus();
+  const animate = status === "fallback";
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -131,7 +134,7 @@ export function OrbitWorld() {
       tx = (e.clientX / window.innerWidth) * 2 - 1;
       ty = (e.clientY / window.innerHeight) * 2 - 1;
     };
-    const running = () => started && inView && !reduce && !document.hidden;
+    const running = () => animate && started && inView && !reduce && !document.hidden;
     const sync = () => {
       cancelAnimationFrame(raf);
       if (running()) raf = requestAnimationFrame(loop);
@@ -162,7 +165,7 @@ export function OrbitWorld() {
       window.removeEventListener("pointermove", onPointer);
       document.removeEventListener("visibilitychange", sync);
     };
-  }, [inView, reduce]);
+  }, [inView, reduce, animate]);
 
   return (
     <div ref={wrapRef} className="orbit-world" aria-hidden>

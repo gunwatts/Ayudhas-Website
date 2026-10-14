@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { SITE } from "@/content/site";
 
@@ -19,9 +19,36 @@ export function Nav() {
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState("");
   const [scrolled, setScrolled] = useState(false);
+  const headerRef = useRef<HTMLElement>(null);
+  const linksRef = useRef<HTMLElement>(null);
+  const pillRef = useRef<HTMLSpanElement>(null);
+  const barRef = useRef<HTMLSpanElement>(null);
+  const openRef = useRef(open);
 
   useEffect(() => {
-    const onScroll = () => setScrolled(window.scrollY > 24);
+    openRef.current = open;
+    if (open) delete headerRef.current?.dataset.hidden;
+  }, [open]);
+
+  // Scrolled state, the progress hairline, and tucking the bar away while reading down (back on any scroll up).
+  useEffect(() => {
+    let last = window.scrollY;
+    let frame = 0;
+    const paint = () => {
+      frame = 0;
+      const y = window.scrollY;
+      const header = headerRef.current;
+      setScrolled(y > 24);
+      const max = document.documentElement.scrollHeight - window.innerHeight;
+      barRef.current?.style.setProperty("transform", `scaleX(${max > 0 ? Math.min(1, y / max).toFixed(4) : 0})`);
+      if (header) {
+        const keep = openRef.current || header.contains(document.activeElement) || y < window.innerHeight * 0.8;
+        if (keep || y < last - 4) delete header.dataset.hidden;
+        else if (y > last + 4) header.dataset.hidden = "true";
+      }
+      last = y;
+    };
+    const onScroll = () => { if (!frame) frame = requestAnimationFrame(paint); };
     onScroll();
     window.addEventListener("scroll", onScroll, { passive: true });
     const io = new IntersectionObserver(
@@ -33,10 +60,32 @@ export function Nav() {
       if (el) io.observe(el);
     });
     return () => {
+      cancelAnimationFrame(frame);
       window.removeEventListener("scroll", onScroll);
       io.disconnect();
     };
   }, []);
+
+  // The pill that slides to the section on screen.
+  useEffect(() => {
+    let alive = true;
+    const place = () => {
+      const pill = pillRef.current;
+      const link = active ? linksRef.current?.querySelector<HTMLElement>(`a[href="${active}"]`) : null;
+      if (!alive || !pill) return;
+      if (!link) { pill.style.opacity = "0"; return; }
+      pill.style.opacity = "1";
+      pill.style.width = `${link.offsetWidth}px`;
+      pill.style.transform = `translateX(${link.offsetLeft}px)`;
+    };
+    place();
+    document.fonts.ready.then(place);
+    window.addEventListener("resize", place);
+    return () => {
+      alive = false;
+      window.removeEventListener("resize", place);
+    };
+  }, [active]);
 
   useEffect(() => {
     if (!open) return;
@@ -46,12 +95,13 @@ export function Nav() {
   }, [open]);
 
   return (
-    <header className={`nav ${scrolled ? "is-scrolled" : ""}`}>
+    <header ref={headerRef} className={`nav ${scrolled ? "is-scrolled" : ""} ${open ? "is-open" : ""}`}>
       <div className="wrap nav-row">
         <a href="#top" className="nav-brand" aria-label="Ayudhas, back to top">
           <Logo size={30} /> <span>Ayudhas</span>
         </a>
-        <nav aria-label="Sections" className="nav-links">
+        <nav ref={linksRef} aria-label="Sections" className="nav-links">
+          <span ref={pillRef} className="nav-pill" aria-hidden />
           {LINKS.map((l) => (
             <a key={l.href} href={l.href} aria-current={active === l.href ? "location" : undefined}>{l.label}</a>
           ))}
@@ -68,12 +118,15 @@ export function Nav() {
           <span aria-hidden className={`burger ${open ? "x" : ""}`}><i /><i /></span>
         </button>
       </div>
+      <span ref={barRef} className="nav-progress" aria-hidden />
       <div id="mobile-menu" className={`mobile-menu glass ${open ? "open" : ""}`} hidden={!open}>
         <nav aria-label="Sections (mobile)">
-          {LINKS.map((l) => (
-            <a key={l.href} href={l.href} onClick={() => setOpen(false)}>{l.label}</a>
+          {LINKS.map((l, i) => (
+            <a key={l.href} href={l.href} style={{ ["--i" as string]: i }} onClick={() => setOpen(false)}>{l.label}</a>
           ))}
-          <a href={SITE.financeUrl} className="btn btn-primary" onClick={() => setOpen(false)}>Open Ayudhas Finance ↗</a>
+          <a href={SITE.financeUrl} className="btn btn-primary" style={{ ["--i" as string]: LINKS.length }} onClick={() => setOpen(false)}>
+            Open Ayudhas Finance ↗
+          </a>
         </nav>
       </div>
     </header>
