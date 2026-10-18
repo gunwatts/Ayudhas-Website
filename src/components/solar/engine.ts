@@ -6,7 +6,7 @@ import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { Sky } from "three/addons/objects/Sky.js";
 
-import { cloudTransmission, type Basis, type Place, snapshot, type Snapshot, type Vec3 } from "./astro";
+import { cloudTransmission, type Basis, type Place, PLANETS, snapshot, type Snapshot, type Vec3 } from "./astro";
 
 /**
  * Solar Vision's renderer: two real-time scenes on one WebGL canvas.
@@ -35,12 +35,24 @@ export type EngineOptions = {
   onHeading?: (azimuth: number, altitude: number, fov: number) => void;
   /** Screen margins (px) kept clear of off-screen labels, so they never sit under the page's panels. */
   insets?: () => { top: number; right: number; bottom: number; left: number };
+  /** Lighter rendering (lower resolution, no multisampling, half-size bloom): small computers such as a Raspberry Pi. */
+  lite?: boolean;
 };
+
+/** The ceiling view: straight up, north at the top of the picture turned by `rotation` degrees (to match the room). */
+export type CeilingView = { rotation: number; fov: number };
+export type NameLanguage = "en" | "hi";
 
 export type SolarEngine = {
   setMode: (mode: ViewMode) => void;
   setPlace: (place: Place) => void;
-  setConstellations: (on: boolean) => void;
+  /** Constellation figures and names (and the planets' names): both, or each on its own. */
+  setConstellations: (on: boolean | { lines: boolean; names: boolean }) => void;
+  setNameLanguage: (lang: NameLanguage) => void;
+  /** Look straight up from the observer (for projecting onto a ceiling), or null for the normal rooftop view. */
+  setCeiling: (view: CeilingView | null) => void;
+  /** Stop drawing (the page is showing black, e.g. a ceiling by day); drawing resumes when set back to false. */
+  setSuspended: (on: boolean) => void;
   setTrueScale: (on: boolean) => void;
   /** Resolves true once the image is on the globe. */
   setSatelliteImage: (url: string) => Promise<boolean>;
@@ -263,6 +275,34 @@ function letterTexture(text: string, color: string) {
   });
 }
 
+/** A text label drawn once into a texture; its on-screen size is set every frame so it stays a fixed pixel height. */
+function textSprite(text: string, color: string, family: string, weight = 600) {
+  const px = 44;
+  const c = document.createElement("canvas");
+  const ctx = c.getContext("2d");
+  const font = `${weight} ${px}px ${family}`;
+  let w = 64;
+  if (ctx) { ctx.font = font; w = Math.ceil(ctx.measureText(text).width) + 24; }
+  c.width = w;
+  c.height = px + 24;
+  if (ctx) {
+    ctx.font = font;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.shadowColor = "rgba(0,0,0,0.9)";
+    ctx.shadowBlur = 8;
+    ctx.fillStyle = color;
+    ctx.fillText(text, w / 2, c.height / 2 + 2);
+  }
+  const map = new THREE.CanvasTexture(c);
+  map.colorSpace = THREE.SRGBColorSpace;
+  const material = new THREE.SpriteMaterial({ map, transparent: true, depthWrite: false, sizeAttenuation: false, opacity: 0 });
+  const sprite = new THREE.Sprite(material);
+  sprite.renderOrder = 4;
+  sprite.userData.aspect = w / c.height;
+  return sprite;
+}
+
 /** Concrete for the roof: speckled grey with a few stains, drawn once. */
 function concreteTexture(rand: () => number) {
   const t = canvasTexture(512, 512, (ctx) => {
@@ -315,7 +355,7 @@ function seeded(seed: number) {
 
 export async function createSolarEngine(o: EngineOptions): Promise<SolarEngine> {
   const { canvas } = o;
-  const lowPower = window.matchMedia("(pointer: coarse)").matches || (navigator.hardwareConcurrency ?? 8) <= 4;
+  const lowPower = Boolean(o.lite) || window.matchMedia("(pointer: coarse)").matches || (navigator.hardwareConcurrency ?? 8) <= 4;
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: "high-performance", stencil: false });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, lowPower ? 1.5 : 2));
   renderer.toneMapping = THREE.NoToneMapping;
@@ -339,6 +379,10 @@ export async function createSolarEngine(o: EngineOptions): Promise<SolarEngine> 
     fetch("/solar/stars.json").then((r) => r.json() as Promise<[number, number, number, number][]>),
     fetch("/solar/constellations.json").then((r) => r.json() as Promise<[number, number][][][]>),
   ]);
+  // Names are optional extras: the sky still runs if they fail to load.
+  const constellationNames = await fetch("/solar/constellation-names.json")
+    .then((r) => r.json() as Promise<[number, number, string, string, number][]>)
+    .catch(() => [] as [number, number, string, string, number][]);
 
   let mode: ViewMode = "sky";
   let place: Place = { lat: 0, lon: 0, height: 0 };
@@ -556,6 +600,58 @@ export async function createSolarEngine(o: EngineOptions): Promise<SolarEngine> 
     disposables.push(tex, s.material);
   }
 
+  // Constellation names, placed on the star sphere and turned with it.
+  const namesGroup = new THREE.Group();
+  namesGroup.matrixAutoUpdate = false;
+  sky.add(namesGroup);
+  let nameLang: NameLanguage = "en";
+  type NameSprite = THREE.Sprite & { userData: { aspect: number; v: [number, number, number]; rank: number } };
+  let nameSprites: NameSprite[] = [];
+  const cssFamily = (v: string, fallback: string) => getComputedStyle(document.documentElement).getPropertyValue(v).trim() || fallback;
+  const buildNames = async () => {
+    const hindi = nameLang === "hi";
+    const family = hindi ? `${cssFamily("--font-sanskrit", "serif")}, "Noto Sans Devanagari", serif` : `${cssFamily("--font-body", "system-ui")}, system-ui, sans-serif`;
+    // Draw only once the face is loaded, or the canvas would bake in a fallback font for good.
+    try { await document.fonts?.load(`600 44px ${family}`, hindi ? "देवयानी" : "Andromeda"); } catch { /* draw with what is there */ }
+    nameSprites.forEach((sp) => { sp.material.map?.dispose(); sp.material.dispose(); namesGroup.remove(sp); });
+    nameSprites = constellationNames.map(([ra, dec, en, hi, rank]) => {
+      const sp = textSprite(hindi && hi ? hi : en, "#9fb8ff", family) as NameSprite;
+      const v = eqjUnit(ra, dec);
+      sp.userData.v = [v[0], v[1], v[2]];
+      sp.userData.rank = rank;
+      sp.position.set(v[0], v[1], v[2]).multiplyScalar(SKY_STAR_RADIUS * 0.97);
+      namesGroup.add(sp);
+      return sp;
+    });
+    relabelPlanets(hindi ? family : `${cssFamily("--font-body", "system-ui")}, system-ui, sans-serif`, hindi);
+  };
+  // The naked-eye planets: a glow sized by brightness, and a name under it.
+  const planetFamily = `${cssFamily("--font-body", "system-ui")}, system-ui, sans-serif`;
+  const planets = PLANETS.map((p) => {
+    const glowSp = new THREE.Sprite(new THREE.SpriteMaterial({
+      map: glow, color: new THREE.Color(p.color), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, sizeAttenuation: false,
+    }));
+    glowSp.renderOrder = 2;
+    const label = textSprite(p.name, "#ffe7b8", planetFamily, 700);
+    label.center.set(0.5, 1.9); // hang below the planet
+    sky.add(glowSp, label);
+    disposables.push(glowSp.material);
+    return { id: p.id, glow: glowSp, label };
+  });
+  /** Planet names in the chosen language (redrawn with the constellation names). */
+  const relabelPlanets = (family: string, hindi: boolean) => {
+    planets.forEach((pl, i) => {
+      const next = textSprite(hindi ? PLANETS[i].hindi : PLANETS[i].name, "#ffe7b8", family, 700);
+      next.center.set(0.5, 1.9);
+      sky.remove(pl.label);
+      pl.label.material.map?.dispose();
+      pl.label.material.dispose();
+      pl.label = next;
+      sky.add(next);
+    });
+  };
+  void buildNames();
+
   /* --------------------------------------------------- space */
 
   const space = new THREE.Scene();
@@ -740,7 +836,10 @@ export async function createSolarEngine(o: EngineOptions): Promise<SolarEngine> 
   const horizonColor = new THREE.Color();
   const sunColor = new THREE.Color();
   const tmpScale = new THREE.Matrix4();
-  let constellations = false;
+  let showLines = false;
+  let showNames = false;
+  let ceiling: CeilingView | null = null;
+  let suspended = false;
   let clockS = 0;
 
   function updateSky() {
@@ -777,7 +876,41 @@ export async function createSolarEngine(o: EngineOptions): Promise<SolarEngine> 
     skyStars.material.uniforms.uTwinkle.value = reduce ? 0 : 1;
     skyStars.material.uniforms.uTime.value = clockS;
     skyStars.material.uniforms.uScale.value = THREE.MathUtils.clamp(60 / look.fov, 1, 3);
-    skyLines.material.opacity = constellations ? 0.32 * dark : 0;
+    skyLines.material.opacity = showLines ? 0.32 * dark : 0;
+
+    // Constellation names: fixed pixel height whatever the zoom, only above the horizon, the minor ones only when
+    // zoomed in enough to have room.
+    namesGroup.matrix.copy(skyMatrix);
+    namesGroup.matrixWorldNeedsUpdate = true;
+    const pxToAngle = (px: number) => (px / Math.max(1, canvas.clientHeight)) * 2 * Math.tan((skyCam.fov * DEG) / 2);
+    const nameH = pxToAngle(ceiling ? 17 : 14);
+    const nameAlpha = showNames ? 0.62 * dark : 0;
+    for (const sp of nameSprites) {
+      const [x, y, z] = sp.userData.v;
+      const up = m[1] * x + m[4] * y + m[7] * z;
+      const show = nameAlpha > 0.01 && up > 0.02 && (sp.userData.rank <= 2 || skyCam.fov < 75);
+      sp.visible = show;
+      if (!show) continue;
+      sp.scale.set(nameH * sp.userData.aspect, nameH, 1);
+      sp.material.opacity = nameAlpha * THREE.MathUtils.smoothstep(up, 0.02, 0.15);
+    }
+
+    // Planets: as bright as they are, gone when the sky is brighter than they are; named with the constellations.
+    const labelH = pxToAngle(ceiling ? 15 : 13);
+    s.planets.forEach((p, i) => {
+      const { glow: g, label } = planets[i];
+      const visible = p.altitude > -0.5;
+      const seen = THREE.MathUtils.clamp((limit + 1.5 - p.magnitude) / 2.5, 0, 1) * (1 - cloudCover * 0.6);
+      g.visible = label.visible = visible && seen > 0.01;
+      if (!g.visible) return;
+      g.position.set(p.dir[0], p.dir[1], p.dir[2]).multiplyScalar(SKY_STAR_RADIUS * 0.96);
+      const size = pxToAngle(THREE.MathUtils.clamp(9 - p.magnitude * 2.2, 5, 22));
+      g.scale.set(size, size, 1);
+      g.material.opacity = seen;
+      label.position.copy(g.position);
+      label.scale.set(labelH * label.userData.aspect, labelH, 1);
+      label.material.opacity = showNames ? 0.85 * seen : 0;
+    });
 
     // The Moon: true direction, apparent size, orientation, sunlight from the true Sun, a little earthshine.
     const r = SKY_MOON_DISTANCE * Math.tan((s.moon.diameterDeg / 2) * DEG);
@@ -826,6 +959,16 @@ export async function createSolarEngine(o: EngineOptions): Promise<SolarEngine> 
     bloom.intensity = THREE.MathUtils.lerp(0.9, 0.22, day);
 
     // Camera.
+    if (ceiling) {
+      // Straight up. With north at the top of the picture, east falls on the left: the sky as seen lying on your back.
+      skyCam.fov = ceiling.fov;
+      skyCam.updateProjectionMatrix();
+      const r = ceiling.rotation * DEG;
+      skyCam.up.set(Math.sin(r), 0, -Math.cos(r));
+      skyCam.lookAt(0, 1, 0);
+      return;
+    }
+    skyCam.up.set(0, 1, 0);
     const k = reduce ? 1 : 1 - Math.exp(-dt * 7);
     look.az += (look.taz - look.az) * k;
     look.alt += (look.talt - look.alt) * k;
@@ -967,7 +1110,7 @@ export async function createSolarEngine(o: EngineOptions): Promise<SolarEngine> 
   let ready = false;
   const frame = (now: number) => {
     raf = requestAnimationFrame(frame);
-    if (document.hidden) return;
+    if (document.hidden || suspended) { last = now; return; }
     dt = Math.min(0.1, (now - last) / 1000);
     last = now;
     clockS += reduce ? 0 : dt;
@@ -1010,7 +1153,22 @@ export async function createSolarEngine(o: EngineOptions): Promise<SolarEngine> 
       snap = snapshot(o.clock(), place);
       orbitAt = -Infinity;
     },
-    setConstellations(on) { constellations = on; },
+    setConstellations(on) {
+      showLines = typeof on === "boolean" ? on : on.lines;
+      showNames = typeof on === "boolean" ? on : on.names;
+    },
+    setNameLanguage(lang) {
+      if (lang === nameLang) return;
+      nameLang = lang;
+      void buildNames();
+    },
+    setCeiling(view) {
+      ceiling = view;
+      // The rooftop, the neighbourhood and the compass letters belong to the rooftop view only.
+      for (const obj of [roof, walls, tank, ground, buildings, ...compass]) obj.visible = !view;
+      labelState.clear();
+    },
+    setSuspended(on) { suspended = on; },
     setTrueScale(on) { trueScale = on; orbitAt = -Infinity; },
     setSatelliteImage(url) {
       return loader.loadAsync(url).then((t) => {
@@ -1091,6 +1249,8 @@ export async function createSolarEngine(o: EngineOptions): Promise<SolarEngine> 
       window.removeEventListener("deviceorientationabsolute", onOrient as EventListener);
       window.removeEventListener("deviceorientation", onOrient as EventListener);
       gsap.killTweensOf([look, live.mix, controls.target, spaceCam.position]);
+      nameSprites.forEach((sp) => { sp.material.map?.dispose(); sp.material.dispose(); });
+      planets.forEach((pl) => { pl.label.material.map?.dispose(); pl.label.material.dispose(); });
       controls.dispose();
       composer.dispose();
       live.texture?.dispose();

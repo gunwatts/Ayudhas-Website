@@ -32,6 +32,17 @@ export type BodyInSky = {
   distanceKm: number;
 };
 
+export type PlanetInSky = { id: string; name: string; azimuth: number; altitude: number; dir: Vec3; magnitude: number };
+
+/** The five planets the eye can see, with the colour each shows in a dark sky. */
+export const PLANETS: { body: Body; id: string; name: string; hindi: string; color: string }[] = [
+  { body: Body.Mercury, id: "mercury", name: "Mercury", hindi: "बुध", color: "#d9cbb5" },
+  { body: Body.Venus, id: "venus", name: "Venus", hindi: "शुक्र", color: "#fff6dc" },
+  { body: Body.Mars, id: "mars", name: "Mars", hindi: "मंगल", color: "#ffb08a" },
+  { body: Body.Jupiter, id: "jupiter", name: "Jupiter", hindi: "बृहस्पति", color: "#ffe9c7" },
+  { body: Body.Saturn, id: "saturn", name: "Saturn", hindi: "शनि", color: "#f2ddb0" },
+];
+
 export type MoonEvent = { kind: "new" | "first" | "full" | "last"; time: Date };
 
 export type Snapshot = {
@@ -66,6 +77,8 @@ export type Snapshot = {
   observerSpace: Vec3;
   /** Column-major 3x3 rotation taking J2000 equatorial unit vectors into the SKY frame (for the star field). */
   eqjToSky: number[];
+  /** The naked-eye planets, where they are in this sky and how bright. */
+  planets: PlanetInSky[];
 };
 
 export type DayEvents = {
@@ -219,6 +232,14 @@ export function snapshot(date: Date, place: Place): Snapshot {
     earthBasisSpace: toBasis(earthAxes, eqjToSpace),
     observerSpace: eqjToSpace(obs),
     eqjToSky: matrixColumns(toHor),
+    planets: PLANETS.map((p) => {
+      const eq = Equator(p.body, time, observer, true, true);
+      const hor = Horizon(time, observer, eq.ra, eq.dec, "normal");
+      return {
+        id: p.id, name: p.name, azimuth: hor.azimuth, altitude: hor.altitude,
+        dir: skyDirection(hor.azimuth, hor.altitude), magnitude: Illumination(p.body, time).mag,
+      };
+    }),
   };
 }
 

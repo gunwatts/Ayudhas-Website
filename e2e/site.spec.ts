@@ -242,3 +242,19 @@ test("Solar Vision's full screen hides every control and brings them back", asyn
   await expect(page.locator(".sv-head")).toBeVisible();
   await expect(page.locator(".sv-time")).toBeVisible();
 });
+
+test("the ceiling view is built from Solar Vision and shows only the sky", async ({ page }) => {
+  page.on("pageerror", (e) => { throw e; });
+  await page.goto("/solar-vision/");
+  await page.getByRole("button", { name: "Ceiling" }).click();
+  const dialog = page.getByRole("dialog", { name: "Ceiling view" });
+  await dialog.getByRole("radio", { name: "हिंदी" }).click();
+  await dialog.getByLabel("Red night light").check();
+  const link = await dialog.getByRole("link", { name: "Open ceiling view" }).getAttribute("href");
+  expect(link).toMatch(/\?ceiling&lat=17\.3850&lon=78\.4867&name=Hyderabad[^&]*&tz=Asia%2FKolkata&names=hi&bright=0\.85&red$/);
+  await page.goto(link!);
+  await expect(page.locator(".sv.sv-ceiling")).toBeVisible();
+  await expect(page.locator(".sv-head")).toBeHidden();
+  await expect(page.locator(".sv-time")).toBeHidden();
+  await expect(page.locator(".sv-canvas")).toHaveCSS("filter", /sepia/);
+});
