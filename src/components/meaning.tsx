@@ -12,7 +12,7 @@ export function Meaning() {
   return (
     <section id="meaning" className="scene meaning" aria-labelledby="meaning-title" data-chapter>
       <div className="wrap">
-        <div className="scene-head reveal">
+        <div className="scene-head reveal" data-depth="0.22">
           <span className="label">The name</span>
           <SplitHeading id="meaning-title" parts={["An instrument in the hand of the one who uses it."]} />
         </div>

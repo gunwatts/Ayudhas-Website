@@ -50,7 +50,7 @@ export const CHAPTERS: Chapter[] = [
     name: "Tools",
     wide: { pos: [4, 34, 22], target: [0, -1, 0], fov: 32, frame: [0.79, 0.2] },
     tall: { pos: [3, 40, 26], target: [0, -1, 0], fov: 44, frame: [0.5, -0.3] },
-    world: { exposure: 0.78, grid: 1, ghost: 0, tags: 0, spread: 0.66 },
+    world: { exposure: 0.78, grid: 0.5, ghost: 0, tags: 0, spread: 0.66 },
   },
   {
     id: "pro",
@@ -71,7 +71,7 @@ export const CHAPTERS: Chapter[] = [
     name: "What comes next",
     wide: { pos: [0, 30, 34], target: [0, -1, 0], fov: 34, frame: [0.77, 0.2] },
     tall: { pos: [0, 36, 42], target: [0, -1, 0], fov: 46, frame: [0.5, -0.3] },
-    world: { exposure: 0.9, grid: 0.8, ghost: 1, tags: 0, spread: 0.62 },
+    world: { exposure: 0.9, grid: 0.55, ghost: 1, tags: 0, spread: 0.62 },
   },
   {
     id: "contact",

@@ -2,19 +2,23 @@ import * as THREE from "three";
 
 import { DESTINATIONS } from "@/content/site";
 import { clamp, damp, lerp, measureAnchors, progressAt, segment, smoothstep } from "@/lib/scroll-conductor";
+import { scrollToHash } from "@/lib/smooth-scroll";
 import { emit, listen } from "@/lib/world-events";
 
 import { blendWorld, CHAPTERS, type Chapter, easeInOut, isTall, type Shot } from "./chapters";
 import {
-  buildFloor, buildMonogram, buildStars, buildTool, FLOOR_Y, type Keep, ORBIT_RADII, orbitLine,
+  buildFloor, buildMonogram, buildSky, buildStars, buildTool, FLOOR_Y, type Keep, ORBIT_RADII, orbitLine,
   type Palette, seeded, type ToolNode,
 } from "./objects";
+import { createLens, type Lens } from "./post";
 import { glowTexture, matcapTexture, slotTexture } from "./textures";
 
 /**
  * The Ayudhas world: one persistent Three.js scene behind every section of the page. Native scroll is the conductor
  * (exact progress for anything interactive, damped progress for the camera), the camera travels a Catmull-Rom path
- * through one composed shot per section, and pointer, focus and selection only add local response.
+ * through one composed shot per section, and pointer, focus and selection only add local response. Frames go through
+ * a post-processing lens (post.ts: bloom, exposure, tone mapping, a speed-driven chromatic fringe); scroll speed
+ * also swells the stars and widens the lens, so moving between scenes feels like travel.
  * Pauses when the tab is hidden; under reduced motion it renders still, composed frames on demand.
  */
 
@@ -74,16 +78,25 @@ export function createWorld(o: WorldOptions): WorldController {
 
   /* ------------------------------------------------------------ renderer and scene */
 
-  // The context is transparent, so the CSS sky (body::before) shows through and its nebulae cost nothing here.
+  // The canvas is opaque and draws its own nebula sky, so bloom can glow over empty space.
   const renderer = new THREE.WebGLRenderer({ canvas, context });
   const palette = readPalette();
-  renderer.setClearColor(palette.night, 0);
-  renderer.toneMapping = THREE.NeutralToneMapping; // keeps the brand hues true
+  renderer.setClearColor(palette.night, 1);
 
   // No lights and no environment map: solids are shaded by one studio matcap, so every shader stays small.
   const scene = new THREE.Scene();
   scene.fog = new THREE.FogExp2(palette.night, 0.016);
   const camera = new THREE.PerspectiveCamera(34, 1, 0.1, 400);
+
+  // The lens; if it cannot be built (or later proves too slow) frames go straight to the screen instead.
+  let post: Lens | null = null;
+  try { post = createLens(renderer, scene, camera, lowPower); } catch { post = null; }
+  const enablePost = (on: boolean) => {
+    if (!on && post) { post.dispose(); post = null; }
+    // Tone mapping happens in the lens when it runs, otherwise in the materials as they draw to the screen.
+    renderer.toneMapping = post ? THREE.NoToneMapping : THREE.NeutralToneMapping;
+  };
+  enablePost(true);
 
   const matcap = keep(matcapTexture());
   const glowMap = keep(glowTexture());
@@ -91,8 +104,14 @@ export function createWorld(o: WorldOptions): WorldController {
   const world = new THREE.Group();
   scene.add(world);
 
+  const sky = buildSky(keep, palette);
+  scene.add(sky.mesh);
   const stars = buildStars(keep, palette, lowPower ? 1100 : 2600, seeded(7));
   scene.add(stars.points);
+  // Dust close to the system: it slides past the camera faster than the stars, which is what sells the depth.
+  const dust = buildStars(keep, palette, lowPower ? 160 : 420, seeded(19), { near: 5, far: 34, size: 0.55, scale: 60, drift: 0.6 });
+  dust.material.uniforms.uOpacity.value = 0.55;
+  scene.add(dust.points);
 
   const floor = buildFloor(keep, palette.blue.clone().lerp(palette.cyan, 0.2));
   world.add(floor.mesh);
@@ -179,6 +198,8 @@ export function createWorld(o: WorldOptions): WorldController {
     view.h = h;
     camera.aspect = w / h;
     stars.material.uniforms.uPixelRatio.value = renderer.getPixelRatio();
+    dust.material.uniforms.uPixelRatio.value = renderer.getPixelRatio();
+    post?.setSize(w, h);
     const nextTall = isTall(w, h);
     if (nextTall !== tall || !shots.length) { tall = nextTall; buildPath(); }
     lens.w = 0; // force the projection to update
@@ -194,7 +215,7 @@ export function createWorld(o: WorldOptions): WorldController {
 
   /* ------------------------------------------------------------ state */
 
-  const state = { exact: 0, smooth: 0, intro: reduce ? 1 : 0, clock: STILL_CLOCK, pace: 1, tags: 0 };
+  const state = { exact: 0, smooth: 0, intro: reduce ? 1 : 0, clock: STILL_CLOCK, pace: 1, tags: 0, warp: 0, lastY: window.scrollY };
   const pointer = {
     tx: 0, ty: 0, x: 0, y: 0, ndc: new THREE.Vector2(10, 10), moved: false,
     fine: window.matchMedia("(hover: hover) and (pointer: fine)").matches,
@@ -273,6 +294,9 @@ export function createWorld(o: WorldOptions): WorldController {
       if (squeeze > 0) pos.addScaledVector(lean.subVectors(pos, target).normalize(), squeeze * 7);
     }
 
+    // Speed: the lens widens a little while the page is moving fast.
+    fov += state.warp * 5;
+
     // The opening shot: a long lens easing in from further back.
     const io = 1 - easeOutCubic(state.intro);
     pos.z += io * 7;
@@ -298,7 +322,13 @@ export function createWorld(o: WorldOptions): WorldController {
     setLens(fov, fx, fy);
     camera.updateMatrixWorld();
 
-    renderer.toneMappingExposure = ws.exposure;
+    if (post) post.setExposure(ws.exposure);
+    else renderer.toneMappingExposure = ws.exposure;
+    post?.setWarp(state.warp);
+    sky.mesh.position.copy(camera.position);
+    sky.material.uniforms.uTime.value = state.clock;
+    sky.material.uniforms.uHue.value = smoothstep(0, n - 1, state.smooth);
+    sky.material.uniforms.uIntensity.value = 0.75 + 0.35 * ws.exposure;
     orbits.scale.set(ws.spread, 1, ws.spread);
     floor.material.uniforms.uOpacity.value = ws.grid;
     poolMaterial.opacity = 0.35 * ws.grid;
@@ -313,6 +343,10 @@ export function createWorld(o: WorldOptions): WorldController {
     stars.material.uniforms.uTwinkle.value = reduce ? 0 : 1;
     stars.points.rotation.y = state.clock * 0.004 - pointer.x * 0.03;
     stars.points.rotation.x = pointer.y * 0.015;
+    stars.material.uniforms.uWarp.value = state.warp;
+    dust.material.uniforms.uTime.value = state.clock;
+    dust.material.uniforms.uTwinkle.value = reduce ? 0 : 0.6;
+    dust.material.uniforms.uWarp.value = state.warp;
 
     mono.mark.rotation.y = Math.sin(state.clock * 0.22) * 0.38 + pointer.x * 0.25;
     mono.mark.rotation.x = pointer.y * 0.08;
@@ -377,7 +411,8 @@ export function createWorld(o: WorldOptions): WorldController {
 
   /**
    * Lower the pixel ratio when frames run long; raise it again only after a sustained run of fast frames. If frames
-   * are still slow at the floor, ask the page to drop its own costly effects (live blur behind panels, grain).
+   * are still slow at the floor, drop the post-processing lens, then ask the page to drop its own costly effects
+   * (live blur behind panels, grain).
    */
   let slowAtFloor = 0;
   function governor(raw: number, now: number) {
@@ -388,6 +423,7 @@ export function createWorld(o: WorldOptions): WorldController {
     const typical = perf.sort((x, y) => x - y)[perf.length >> 1];
     perf.length = 0;
     if (typical > 0.024 && perfScale > minScale) { perfScale = Math.max(minScale, perfScale * (typical > 0.05 ? 0.75 : 0.88)); applySize(); }
+    else if (typical > 0.024 && post) enablePost(false); // at the lowest resolution: draw without the lens
     else if (typical > 0.024 && ++slowAtFloor >= 2) root.classList.add("world-lite");
     else if (typical < 0.0145 && perfScale < 1) { slowAtFloor = 0; perfScale = Math.min(1, perfScale + 0.08); applySize(); }
   }
@@ -399,16 +435,22 @@ export function createWorld(o: WorldOptions): WorldController {
     lastFrame = now;
     const step = Math.min(raw, 1 / 30);
 
-    state.exact = progressAt(window.scrollY, anchors);
+    const scrollY = window.scrollY;
+    state.exact = progressAt(scrollY, anchors);
     const goal = reduce ? Math.round(state.exact) : state.exact;
-    state.smooth = reduce ? goal : damp(state.smooth, goal, 5.2, step);
+    state.smooth = reduce ? goal : damp(state.smooth, goal, 6, step);
+    // Scroll speed in screens per second, eased, as 0..1 "warp".
+    const speed = raw > 0 ? Math.abs(scrollY - state.lastY) / Math.max(1, window.innerHeight) / raw : 0;
+    state.lastY = scrollY;
+    state.warp = reduce ? 0 : damp(state.warp, clamp(speed / 2.5, 0, 1), speed / 2.5 > state.warp ? 8 : 2.5, step);
+    if (state.warp < 1e-3) state.warp = 0;
     if (Math.abs(state.smooth - goal) < 1e-4) state.smooth = goal;
     const follow = reduce ? 1 : 1 - Math.pow(1 - 0.055, step * 60);
     pointer.x += (pointer.tx - pointer.x) * follow;
     pointer.y += (pointer.ty - pointer.y) * follow;
 
     const settling = Math.abs(state.smooth - goal) > 1e-3 || state.intro < 1 || focusMoving
-      || Math.abs(pointer.tx - pointer.x) > 1e-3 || Math.abs(pointer.ty - pointer.y) > 1e-3;
+      || Math.abs(pointer.tx - pointer.x) > 1e-3 || Math.abs(pointer.ty - pointer.y) > 1e-3 || state.warp > 0;
     if (reduce) {
       if (!dirty) return;
     } else if (lowPower && !settling && now - lastRender < 1000 / 30 - 2) {
@@ -423,7 +465,8 @@ export function createWorld(o: WorldOptions): WorldController {
       state.intro = Math.min(1, state.intro + dt / INTRO_SECONDS);
     }
     update(dt);
-    renderer.render(scene, camera);
+    if (post) post.render(dt);
+    else renderer.render(scene, camera);
     dirty = false;
     if (!announced) { announced = true; o.onReady(); }
     if (!reduce && !(lowPower && !settling)) governor(raw, now);
@@ -434,10 +477,7 @@ export function createWorld(o: WorldOptions): WorldController {
 
   const goToTool = (id: string) => {
     emit("ayudhas:select-destination", { id });
-    const universe = document.getElementById("universe");
-    if (!universe) return;
-    if (location.hash === "#universe") universe.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "start" });
-    else location.hash = "#universe";
+    scrollToHash("#universe");
   };
   const onPointerMove = (e: PointerEvent) => {
     if (e.pointerType !== "mouse") return;
@@ -560,6 +600,8 @@ export function createWorld(o: WorldOptions): WorldController {
         el.classList.remove("is-hot");
       });
       root.classList.remove("world-hot", "world-lite");
+      post?.dispose();
+      post = null;
       bag.forEach((r) => r.dispose());
       bag.clear();
       renderer.dispose();

@@ -66,12 +66,16 @@ export function buildMonogram(p: Palette, keep: Keep, glowMap: THREE.Texture, ma
 
   const glow = { value: 0.2 };
   const material = keep(new THREE.MeshMatcapMaterial({ matcap, vertexColors: true }));
-  // Let the gradient glow from within, so the mark stays legible against the night without a bloom pass.
+  // Let the gradient glow from within, and light its edges (a fresnel rim) so the bloom pass catches the silhouette.
   material.onBeforeCompile = (shader) => {
     shader.uniforms.uGlow = glow;
     shader.fragmentShader = "uniform float uGlow;\n" + shader.fragmentShader.replace(
       "#include <opaque_fragment>",
-      "outgoingLight += vColor.rgb * uGlow;\n\t#include <opaque_fragment>",
+      [
+        "float rimF = pow(1.0 - abs(dot(normalize(normal), normalize(vViewPosition))), 2.4);",
+        "outgoingLight += vColor.rgb * uGlow + mix(vColor.rgb, vec3(1.0), 0.35) * rimF * 1.6;",
+        "#include <opaque_fragment>",
+      ].join("\n\t"),
     );
   };
   const mark = new THREE.Mesh(geo, material);
@@ -395,14 +399,22 @@ const STAR_VERT = /* glsl */ `
   uniform float uTime;
   uniform float uPixelRatio;
   uniform float uTwinkle;
+  uniform float uScale;
+  uniform float uWarp;
+  uniform float uDrift;
   varying vec3 vColor;
   varying float vAlpha;
   void main() {
-    vec4 mv = modelViewMatrix * vec4(position, 1.0);
+    vec3 p = position;
+    // Near dust drifts on slow, independent loops, so the space in front of the camera feels inhabited.
+    p += uDrift * vec3(sin(uTime * 0.21 + aPhase * 31.0), cos(uTime * 0.17 + aPhase * 17.0), sin(uTime * 0.13 + aPhase * 23.0));
+    vec4 mv = modelViewMatrix * vec4(p, 1.0);
     gl_Position = projectionMatrix * mv;
     vColor = aColor;
     vAlpha = 1.0 - uTwinkle * 0.5 * (0.5 + 0.5 * sin(uTime * (0.6 + aPhase * 1.7) + aPhase * 40.0));
-    gl_PointSize = min(12.0, aSize * uPixelRatio * (110.0 / -mv.z));
+    // Fast scrolling swells and brightens every point: the sense of speed between scenes.
+    vAlpha *= 1.0 + uWarp * 1.4;
+    gl_PointSize = min(14.0, aSize * uPixelRatio * (uScale / -mv.z) * (1.0 + uWarp * 0.9));
   }
 `;
 
@@ -419,7 +431,10 @@ const STAR_FRAG = /* glsl */ `
   }
 `;
 
-export function buildStars(keep: Keep, p: Palette, count: number, rand: () => number) {
+export type StarField = { near: number; far: number; size: number; scale: number; drift: number };
+const SKY_STARS: StarField = { near: 40, far: 160, size: 1.1, scale: 110, drift: 0 };
+
+export function buildStars(keep: Keep, p: Palette, count: number, rand: () => number, field: StarField = SKY_STARS) {
   const positions = new Float32Array(count * 3);
   const sizes = new Float32Array(count);
   const phases = new Float32Array(count);
@@ -430,11 +445,11 @@ export function buildStars(keep: Keep, p: Palette, count: number, rand: () => nu
     const u = rand() * 2 - 1;
     const th = rand() * TAU;
     const s = Math.sqrt(1 - u * u);
-    const r = 40 + Math.pow(rand(), 0.7) * 120;
+    const r = field.near + Math.pow(rand(), 0.7) * (field.far - field.near);
     positions[i * 3] = s * Math.cos(th) * r;
     positions[i * 3 + 1] = u * r * 0.7 + 4;
     positions[i * 3 + 2] = s * Math.sin(th) * r;
-    sizes[i] = 1.1 + Math.pow(rand(), 4) * 3.4;
+    sizes[i] = field.size * (1 + Math.pow(rand(), 4) * 3.1);
     phases[i] = rand();
     c.copy(tints[Math.floor(rand() * tints.length)]).lerp(p.text, 0.45);
     colors[i * 3] = c.r; colors[i * 3 + 1] = c.g; colors[i * 3 + 2] = c.b;
@@ -445,7 +460,10 @@ export function buildStars(keep: Keep, p: Palette, count: number, rand: () => nu
   geometry.setAttribute("aPhase", new THREE.BufferAttribute(phases, 1));
   geometry.setAttribute("aColor", new THREE.BufferAttribute(colors, 3));
   const material = keep(new THREE.ShaderMaterial({
-    uniforms: { uTime: { value: 0 }, uPixelRatio: { value: 1 }, uTwinkle: { value: 1 }, uOpacity: { value: 1 } },
+    uniforms: {
+      uTime: { value: 0 }, uPixelRatio: { value: 1 }, uTwinkle: { value: 1 }, uOpacity: { value: 1 },
+      uScale: { value: field.scale }, uWarp: { value: 0 }, uDrift: { value: field.drift },
+    },
     vertexShader: STAR_VERT,
     fragmentShader: STAR_FRAG,
     transparent: true,
@@ -453,4 +471,86 @@ export function buildStars(keep: Keep, p: Palette, count: number, rand: () => nu
     blending: THREE.AdditiveBlending,
   }));
   return { points: new THREE.Points(geometry, material), material };
+}
+
+/* ------------------------------------------------------------------ the sky */
+
+const SKY_VERT = /* glsl */ `
+  varying vec3 vDir;
+  void main() {
+    vDir = normalize(position);
+    vec4 mv = modelViewMatrix * vec4(position, 1.0);
+    gl_Position = projectionMatrix * mv;
+    gl_Position.z = gl_Position.w * 0.9999; // at the far plane, behind everything
+  }
+`;
+
+const SKY_FRAG = /* glsl */ `
+  uniform vec3 uNight;
+  uniform vec3 uDeep;
+  uniform vec3 uBlue;
+  uniform vec3 uViolet;
+  uniform vec3 uCyan;
+  uniform float uTime;
+  uniform float uIntensity;
+  uniform float uHue;
+  varying vec3 vDir;
+  float hash(vec3 p) { p = fract(p * 0.3183099 + 0.1); p *= 17.0; return fract(p.x * p.y * p.z * (p.x + p.y + p.z)); }
+  float noise(vec3 x) {
+    vec3 i = floor(x); vec3 f = fract(x); f = f * f * (3.0 - 2.0 * f);
+    return mix(mix(mix(hash(i), hash(i + vec3(1, 0, 0)), f.x), mix(hash(i + vec3(0, 1, 0)), hash(i + vec3(1, 1, 0)), f.x), f.y),
+               mix(mix(hash(i + vec3(0, 0, 1)), hash(i + vec3(1, 0, 1)), f.x), mix(hash(i + vec3(0, 1, 1)), hash(i + vec3(1, 1, 1)), f.x), f.y), f.z);
+  }
+  float fbm(vec3 p) {
+    float v = 0.0; float a = 0.5;
+    for (int i = 0; i < 4; i++) { v += a * noise(p); p = p * 2.03 + 11.7; a *= 0.5; }
+    return v;
+  }
+  void main() {
+    vec3 d = normalize(vDir);
+    vec3 q = d * 2.2 + vec3(uTime * 0.006, 0.0, uTime * 0.004);
+    float warp = fbm(q + fbm(q * 1.7) * 1.3);
+    float clouds = smoothstep(0.42, 0.9, warp);
+    float wisps = smoothstep(0.55, 0.95, fbm(q * 3.1 - 4.0));
+    // Base: the night overhead, a deeper indigo towards the horizon band.
+    float band = exp(-pow(d.y * 2.4 - 0.15, 2.0));
+    vec3 color = mix(uNight, uDeep, band * 0.85);
+    // Two nebula families that trade places as the scenes go by (uHue).
+    vec3 nebA = mix(uBlue, uViolet, smoothstep(0.3, 0.8, noise(d * 3.0 + 2.0)));
+    vec3 nebB = mix(uViolet, uCyan, smoothstep(0.3, 0.8, noise(d * 2.5 - 5.0)));
+    vec3 neb = mix(nebA, nebB, uHue);
+    color += neb * clouds * 0.22 * uIntensity;
+    color += mix(uCyan, uBlue, 0.5) * wisps * clouds * 0.12 * uIntensity;
+    gl_FragColor = vec4(color, 1.0);
+    #include <colorspace_fragment>
+  }
+`;
+
+/**
+ * The night sky as a slowly drifting nebula on a dome around the camera, drawn first and at the far plane.
+ * It replaces the CSS gradient once the world runs (the canvas is opaque so bloom can glow over empty space).
+ */
+export function buildSky(keep: Keep, p: Palette) {
+  const material = keep(new THREE.ShaderMaterial({
+    uniforms: {
+      uNight: { value: p.night.clone() },
+      uDeep: { value: new THREE.Color("#0b0f2e") },
+      uBlue: { value: p.blue.clone() },
+      uViolet: { value: p.violet.clone() },
+      uCyan: { value: p.cyan.clone() },
+      uTime: { value: 0 },
+      uIntensity: { value: 1 },
+      uHue: { value: 0 },
+    },
+    vertexShader: SKY_VERT,
+    fragmentShader: SKY_FRAG,
+    side: THREE.BackSide,
+    depthWrite: false,
+    depthTest: false,
+    fog: false,
+  }));
+  const mesh = new THREE.Mesh(keep(new THREE.SphereGeometry(300, 48, 24)), material);
+  mesh.renderOrder = -10;
+  mesh.frustumCulled = false;
+  return { mesh, material };
 }

@@ -19,7 +19,7 @@ export function Future() {
   return (
     <section id="future" className="scene future" aria-labelledby="future-title" data-chapter>
       <div className="wrap">
-        <div className="scene-head reveal">
+        <div className="scene-head reveal" data-depth="0.22">
           <span className="label">What comes next</span>
           <SplitHeading id="future-title" parts={["A map with room to grow."]} />
           <p className="lede">

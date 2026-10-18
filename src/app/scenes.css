@@ -68,26 +68,19 @@ html[data-world="ready"] .orbit-world, html[data-world="ready"] .horizon { opaci
 .gateway-title { font-size: clamp(3.2rem, 11vw, 7.4rem); padding-right: 0.05em; font-weight: 700; letter-spacing: -0.045em; line-height: 0.92; perspective: 600px; }
 .gateway-title .ch { display: inline-block; background: linear-gradient(180deg, #fff 30%, #b9c3ff); -webkit-background-clip: text; background-clip: text; color: transparent; }
 /* The opening: letters rise out of a blur one after another, then the line, the promise and the way in. CSS only,
-   so it plays at first paint, before any JavaScript. */
+   so it plays at first paint, before any JavaScript. Fill is backwards only, so once played the elements are free
+   for the scroll-scrubbed exit (ScrollDirector, GSAP). */
 @media (prefers-reduced-motion: no-preference) {
-  .gateway-title .ch { animation: letter-in 1.1s var(--ease-out) both; animation-delay: calc(140ms + var(--i, 0) * 55ms); transform-origin: 50% 100%; }
-  .gateway-eyebrow { animation: rise-in 0.9s var(--ease-out) 60ms both; }
-  .gateway-tagline { animation: rise-in 0.9s var(--ease-out) 540ms both; }
-  .gateway-lede { animation: rise-in 0.9s var(--ease-out) 660ms both; }
-  .gateway-cta { animation: rise-in 0.9s var(--ease-out) 780ms both; }
-  .scroll-cue { animation: fade-in 1s ease 1.5s both; }
-  /* Leaving the opening: the copy lifts away with the scroll (scroll-driven, where supported). */
-  @supports (animation-timeline: scroll()) {
-    .gateway-inner { animation: hero-exit linear forwards; animation-timeline: scroll(root); animation-range: 3vh 70vh; }
-    .scroll-cue { animation: fade-in 1s ease 1.5s both, fade-out linear forwards; animation-timeline: auto, scroll(root); animation-range: normal, 0 16vh; }
-  }
+  .gateway-title .ch { animation: letter-in 1.1s var(--ease-out) backwards; animation-delay: calc(140ms + var(--i, 0) * 55ms); transform-origin: 50% 100%; }
+  .gateway-eyebrow { animation: rise-in 0.9s var(--ease-out) 60ms backwards; }
+  .gateway-tagline { animation: rise-in 0.9s var(--ease-out) 540ms backwards; }
+  .gateway-lede { animation: rise-in 0.9s var(--ease-out) 660ms backwards; }
+  .gateway-cta { animation: rise-in 0.9s var(--ease-out) 780ms backwards; }
+  .scroll-cue { animation: fade-in 1s ease 1.5s backwards; }
 }
 @keyframes letter-in { from { opacity: 0; transform: translateY(0.38em) rotateX(-50deg); filter: blur(10px); } }
 @keyframes rise-in { from { opacity: 0; translate: 0 22px; } }
 @keyframes fade-in { from { opacity: 0; } }
-@keyframes fade-out { to { opacity: 0; } }
-/* Opacity only: the copy must stay in the accessibility tree after it has scrolled away. */
-@keyframes hero-exit { to { opacity: 0; translate: 0 -64px; } }
 
 /* Labels that float under the tools in the 3D world (positioned by the world each frame). */
 .tool-tags { position: fixed; inset: 0; z-index: 1; overflow: hidden; pointer-events: none; }
@@ -160,7 +153,7 @@ html.world-hot .gateway { cursor: pointer; }
 .map-core::after { content: ""; position: absolute; inset: -18px; border-radius: 50%; box-shadow: 0 0 60px rgb(155 123 255 / 0.7); opacity: 0; animation: breathe 5s ease-in-out infinite; }
 .map-core span { font-family: var(--font-display), sans-serif; font-size: 0.72rem; font-weight: 700; color: #0b0f2e; letter-spacing: 0.04em; }
 @keyframes breathe { 50% { opacity: 1; } }
-.planet { position: absolute; translate: -50% -50%; transform: translateZ(54px); display: grid; justify-items: center; gap: 0.4rem; padding: 0.4rem; border: 0; background: none; cursor: pointer; border-radius: 16px; }
+.planet { position: absolute; translate: calc(-50% + var(--mag-x, 0px)) calc(-50% + var(--mag-y, 0px)); transform: translateZ(54px); display: grid; justify-items: center; gap: 0.4rem; padding: 0.4rem; border: 0; background: none; cursor: pointer; border-radius: 16px; }
 .planet:active .planet-orb { transform: scale(1.1); transition-duration: 90ms; }
 .planet-orb { width: 46px; height: 46px; border-radius: 50%; background: radial-gradient(circle at 32% 28%, #fff, var(--hue) 45%, color-mix(in srgb, var(--hue) 40%, #000)); box-shadow: 0 0 0 1px rgb(255 255 255 / 0.2), 0 0 28px color-mix(in srgb, var(--hue) 60%, transparent); transition: transform 0.45s var(--ease), box-shadow 0.45s; }
 .planet.planned .planet-orb { background: transparent; border: 1.5px dashed var(--hue); box-shadow: none; }
@@ -268,7 +261,9 @@ html.world-hot .gateway { cursor: pointer; }
 .pro-panel li::before { content: "✓"; position: absolute; left: 0; color: var(--emerald); font-weight: 800; }
 .pro-cta { display: flex; flex-wrap: wrap; gap: 0.8rem; }
 .pro-feature { margin: clamp(2.5rem, 6vw, 4rem) 0 0; padding: 0.8rem; display: grid; gap: 0.6rem; }
-.pro-feature img { border-radius: 16px; width: 100%; aspect-ratio: 1024 / 500; }
+.pro-feature-media { border-radius: 16px; overflow: hidden; }
+.pro-feature img { width: 100%; aspect-ratio: 1024 / 500; transform-origin: 50% 40%; }
+.pro-device { transform-style: preserve-3d; }
 .pro-feature figcaption { padding: 0 0.4rem 0.2rem; }
 @media (max-width: 900px) {
   .pro-grid { grid-template-columns: minmax(0, 1fr); }
@@ -326,7 +321,7 @@ html.world-hot .gateway { cursor: pointer; }
 .copy { min-height: 38px; padding: 0 1rem; font-size: 0.85rem; }
 .contact-form { padding: clamp(1.2rem, 3vw, 2rem); display: grid; gap: 1.1rem; }
 .form-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
-.field { display: grid; gap: 0.4rem; min-width: 0; }
+.field { display: grid; gap: 0.4rem; min-width: 0; align-content: start; }
 .field label { font-weight: 700; font-size: 0.92rem; }
 .field input, .field select, .field textarea {
   width: 100%; padding: 0.8rem 0.95rem; border-radius: 14px; border: 1px solid var(--edge-strong); background: rgb(6 8 24 / 0.55);
@@ -349,13 +344,25 @@ html.world-hot .gateway { cursor: pointer; }
 @media (max-width: 560px) { .form-row { grid-template-columns: minmax(0, 1fr); } }
 
 /* ---------- footer ---------- */
-.footer { border-top: 1px solid var(--edge); padding-block: 3.5rem 2rem; background: linear-gradient(180deg, transparent, rgb(11 15 46 / 0.6)); }
+/* The footer settles the world behind it into shadow, so its small type always reads. */
+.footer { position: relative; overflow: hidden; border-top: 1px solid var(--edge); padding-block: 3.5rem 2rem; background: linear-gradient(180deg, rgb(6 8 24 / 0.78), rgb(6 8 24 / 0.94) 40%); }
 .footer-grid { display: grid; grid-template-columns: minmax(0, 1.6fr) repeat(3, minmax(0, 1fr)); gap: 2rem; }
 .footer-brand { display: grid; gap: 0.8rem; align-content: start; }
 .footer-brand p { color: var(--muted); max-width: 40ch; }
 .footer-col { display: grid; gap: 0.55rem; align-content: start; }
 .footer-col a { color: var(--muted); text-decoration: none; overflow-wrap: anywhere; }
 .footer-col a:hover { color: var(--text); }
+/* The closing wordmark: one line of outlined type the width of the page, rising letter by letter (ScrollDirector). */
+.footer-mark {
+  display: flex; justify-content: center; overflow: hidden; margin-top: clamp(2.5rem, 6vw, 4.5rem); padding-inline: var(--gutter);
+  font-family: var(--font-display), sans-serif; font-weight: 700; font-size: clamp(4rem, 17.5vw, 15.5rem); line-height: 0.95;
+  letter-spacing: -0.045em; user-select: none;
+}
+.footer-mark span {
+  display: inline-block; color: transparent;
+  background: linear-gradient(180deg, rgb(155 123 255 / 0.34), rgb(91 140 255 / 0.12) 55%, transparent 92%);
+  -webkit-background-clip: text; background-clip: text;
+}
 .footer-base { display: flex; justify-content: space-between; gap: 1rem; flex-wrap: wrap; margin-top: 2.5rem; padding-top: 1.5rem; border-top: 1px solid var(--edge); color: var(--faint); font-size: 0.85rem; }
 @media (max-width: 860px) { .footer-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .footer-brand { grid-column: 1 / -1; } }
 @media (max-width: 480px) { .footer-grid { grid-template-columns: minmax(0, 1fr); } }

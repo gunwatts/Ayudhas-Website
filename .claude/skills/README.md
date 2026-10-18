@@ -25,8 +25,9 @@ scroll-world demo bundles the Kage page and artwork, which carry no reuse licenc
 
 ## Deliberate deviations
 
-- `build-awwwards-quality-sites` asks for GSAP plus a smooth-scroll engine. This site keeps native scrolling and CSS
-  transitions instead, as `build-threejs-scroll-worlds` and the Kage reference do: the camera is damped, the page is
-  not, so anchors, the keyboard and assistive technology behave normally and no animation library ships.
+- `build-awwwards-quality-sites` asks for GSAP plus one smooth-scroll engine: the site now uses GSAP ScrollTrigger
+  and Lenis (on GSAP's ticker). Lenis only smooths wheel and trackpad input (touch stays native), is off under reduced
+  motion, and in-page links go through `scrollToHash` so focus and the address bar behave like a native jump.
+  Reveals stay CSS (MotionDirector); GSAP is used for scrubbed, scroll-linked motion only.
 - The same skill discourages hand-drawn SVG and CSS illustration. The existing constellation, phone screens and logo
   are kept: they are data graphics and brand marks built from the site's own content.
