@@ -18,6 +18,11 @@
 /* The pill slides to whichever section is on screen. */
 .nav-pill { position: absolute; left: 0; top: 0; height: 100%; width: 0; border-radius: 999px; opacity: 0; pointer-events: none; background: var(--glass-strong); box-shadow: inset 0 0 0 1px var(--edge); transition: transform 0.5s var(--ease-out), width 0.5s var(--ease-out), opacity 0.3s; }
 .nav-cta { min-height: 40px; padding: 0 1rem; font-size: 0.88rem; }
+.nav-cta + .nav-cta { margin-left: -0.9rem; }
+/* A small eclipse: the Moon's limb over a warm Sun. */
+.nav-solar-dot { width: 14px; height: 14px; border-radius: 50%; flex: none; background: radial-gradient(circle at 62% 40%, #0b0f2e 0 46%, transparent 48%), radial-gradient(circle, #ffe2a6, #f5b85c 60%, #ff8a3d); box-shadow: 0 0 12px rgb(245 184 92 / 0.8); }
+/* Seven links and two buttons need about 1100px; below that the menu button takes over. */
+.nav-links a, .nav-cta { white-space: nowrap; }
 .nav-toggle { display: none; margin-left: auto; width: 46px; height: 46px; border-radius: 14px; border: 1px solid var(--edge); background: var(--glass); cursor: pointer; }
 .burger { display: grid; gap: 6px; justify-items: center; }
 .burger i { display: block; width: 20px; height: 2px; border-radius: 2px; background: var(--text); transition: transform 0.3s var(--ease); }
@@ -32,7 +37,7 @@
 .mobile-menu.open nav > * { animation: menu-item 0.45s var(--ease-out) both; animation-delay: calc(60ms + var(--i, 0) * 35ms); }
 @keyframes menu-in { from { opacity: 0; transform: translateY(-8px) scale(0.97); } }
 @keyframes menu-item { from { opacity: 0; transform: translateY(-6px); } }
-@media (max-width: 960px) {
+@media (max-width: 1100px) {
   .nav-links, .nav-cta { display: none; }
   .nav-toggle { display: grid; place-items: center; }
 }

@@ -158,3 +158,30 @@ test("in-page links glide to their section, update the address and move focus th
   await expect(page.locator("#stories")).toBeFocused();
   await expect(page.getByRole("heading", { name: "What a good tool feels like." })).toBeInViewport();
 });
+
+test("Solar Vision opens from the menu and shows the live Sun and Moon for a place", async ({ browser, isMobile, baseURL }) => {
+  const ctx = await browser.newContext({
+    baseURL, ...(isMobile ? { viewport: { width: 412, height: 915 }, isMobile: true, hasTouch: true } : {}),
+    geolocation: { latitude: 51.5074, longitude: -0.1278 }, permissions: ["geolocation"],
+  });
+  const page = await ctx.newPage();
+  page.on("pageerror", (e) => { throw e; });
+  await page.goto("/");
+  if (isMobile) {
+    await page.getByRole("button", { name: "Open menu" }).click();
+    await page.getByRole("navigation", { name: "Sections (mobile)" }).getByRole("link", { name: /Solar Vision/ }).click();
+  } else {
+    await page.getByRole("link", { name: "Solar Vision" }).first().click();
+  }
+  await expect(page).toHaveURL(/\/solar-vision\/$/);
+  await expect(page.getByRole("heading", { level: 1, name: "Solar Vision" })).toBeAttached();
+  await expect(page.getByRole("tab", { name: "Rooftop sky" })).toHaveAttribute("aria-selected", "true");
+  // The numbers run without the 3D view: phase, lit fraction, and rise and set times.
+  const panel = page.getByRole("complementary", { name: "Live data" });
+  await expect(panel).toContainText(/% lit/, { timeout: 20_000 });
+  await expect(panel).toContainText("Sunrise");
+  await expect(page.locator(".sv-place small")).toContainText("51.51°N 0.13°W", { timeout: 20_000 });
+  await page.getByRole("tab", { name: "From space" }).click();
+  await expect(page.getByRole("tab", { name: "From space" })).toHaveAttribute("aria-selected", "true");
+  await ctx.close();
+});

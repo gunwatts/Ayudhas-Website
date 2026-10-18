@@ -17,6 +17,27 @@ https://finance.ayudhas.com.
   (`data-depth`), the Ayudhas Pro phone turning, the store graphic opening up, and the footer wordmark rising.
   In-page links glide through `scrollToHash` (`src/lib/smooth-scroll.ts`), which keeps focus and the address bar right.
 - A cursor ring and magnetic buttons on mice and trackpads (`cursor.tsx`).
+- **Solar Vision** (`/solar-vision/`, linked from the menu): the real Sun, Moon and Earth for the visitor's place
+  and moment, in two live 3D views on one canvas (`src/components/solar/`):
+  - *Rooftop sky*: Preetham daylight scattering (three.js `Sky`) lit by the true Sun, with added twilight, airglow
+    and moonlit sky; real cloud cover and haze from Open-Meteo; 2,851 naked-eye stars and 89 constellation figures
+    turned for the place and time; the Moon at its true topocentric position, size, phase, tilt and libration,
+    shaded with NASA LRO colour and relief (Lommel–Seeliger regolith reflectance). Drag to look, scroll or pinch to
+    zoom, "Point my phone" on phones uses the compass and gyroscope.
+  - *From space*: the Earth at its true rotation and tilt with yesterday's NASA GIBS satellite image (real clouds),
+    city lights on the night side, the Moon at its true direction (distance shortened, or true with a toggle), the
+    Sun, and the visitor's place with lines to the Moon and the Sun.
+  - Live numbers: Moon phase, % lit, age, direction and height, magnitude, moonlight (lux), distance, size,
+    rise and set; Sun direction and height, estimated sunlight (W/m² and lux, clear-sky model × cloud cover),
+    sunrise, sunset, solar noon, day length; the next four Moon phases. Time runs live, scrubs ±2 days, or fast-
+    forwards at 10 min/s, 1 h/s or 1 day/s.
+  - All positions are computed in the browser with Astronomy Engine (no server, no API key);
+    `src/__tests__/astro.test.ts` checks them against USNO almanac times. Every online service is free and keyless:
+    browser geolocation (asks permission), BigDataCloud reverse geocoding, Open-Meteo weather and place search, NASA
+    GIBS imagery. Each fails soft.
+  - Assets in `public/solar/`: Earth day, night, clouds, normal and specular maps and the Sun by Solar System Scope
+    (CC BY 4.0, credited on the page); Moon colour and elevation from NASA's CGI Moon Kit (LRO, public domain);
+    star and constellation data from d3-celestial (BSD-3-Clause).
 - Everything else is CSS and small React components: word-by-word headings, reveals, glass panels, the tools map's
   3D tilt, the sliding nav and tab pills.
 - The contact form posts to `https://api.ayudhas.com/api/v1/contact` (the Ayudhas backend). Messages are read on the
@@ -37,6 +58,9 @@ https://finance.ayudhas.com.
 - `src/content/site.ts`: all wording about the brand, tools and statuses. Add a tool here first.
 - `src/components/`: one file per scene (`meaning`, `universe`, `pro`, `stories`, `future`, `contact`), plus the nav,
   the chapter rail, `motion-director` (reveals, off-screen pausing, pointer spotlight and tilt) and `split-heading`.
+- `src/components/solar/`: Solar Vision. `astro.ts` (positions, phases, brightness; pure and unit tested),
+  `live.ts` (location, weather, place search, satellite image), `engine.ts` (both 3D scenes), `solar-vision.tsx`
+  (the page UI), `phase-icon.tsx`.
 - `src/components/world/`: the 3D world. `chapters.ts` is the scene ledger (camera shot and world state per scene;
   tune compositions there), `engine.ts` the renderer, scroll conductor and interactions, `post.ts` the
   post-processing lens, `objects.ts` (sky, stars, dust, mark, tools, floor) and `textures.ts` the procedural pieces. `src/lib/scroll-conductor.ts` holds the pure scroll maths (unit tested).
