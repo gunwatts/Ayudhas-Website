@@ -152,3 +152,22 @@ export function zoneOffsetSeconds(timeZone: string | undefined, at: Date): numbe
     return -at.getTimezoneOffset() * 60;
   }
 }
+
+const pad = (n: number) => String(n).padStart(2, "0");
+
+/** A moment as the value of a `datetime-local` input, in the given time zone's wall time ("YYYY-MM-DDTHH:mm"). */
+export function toWallTime(at: Date, timeZone: string | undefined): string {
+  const local = new Date(at.getTime() + zoneOffsetSeconds(timeZone, at) * 1000);
+  return `${local.getUTCFullYear()}-${pad(local.getUTCMonth() + 1)}-${pad(local.getUTCDate())}T${pad(local.getUTCHours())}:${pad(local.getUTCMinutes())}`;
+}
+
+/** The moment a `datetime-local` value names in the given time zone, or null if it is not a valid date and time. */
+export function fromWallTime(value: string, timeZone: string | undefined): Date | null {
+  const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/.exec(value);
+  if (!m) return null;
+  const asUtc = Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]), Number(m[4]), Number(m[5]));
+  if (!Number.isFinite(asUtc)) return null;
+  // The offset depends on the moment itself (daylight saving), so settle it in two steps.
+  const first = asUtc - zoneOffsetSeconds(timeZone, new Date(asUtc)) * 1000;
+  return new Date(asUtc - zoneOffsetSeconds(timeZone, new Date(first)) * 1000);
+}

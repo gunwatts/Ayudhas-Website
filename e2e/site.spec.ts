@@ -203,3 +203,26 @@ test("Solar Vision finds a city by name and shows its local time", async ({ page
   await expect(page.getByRole("complementary", { name: "Live data" })).toContainText("Europe/London", { timeout: 20_000 });
   await expect(page.locator(".sv-clock time")).toContainText(/GMT|BST/);
 });
+
+test("Solar Vision can pause, rewind and jump to a chosen date and time", async ({ browser, baseURL }) => {
+  const ctx = await browser.newContext({ baseURL, timezoneId: "Asia/Kolkata" });
+  const page = await ctx.newPage();
+  page.on("pageerror", (e) => { throw e; });
+  await page.goto("/solar-vision/");
+  const status = page.locator(".sv-live");
+  const clock = page.locator(".sv-time time");
+  await page.getByRole("button", { name: "Pause" }).click();
+  await expect(status).toHaveText(/Paused/i);
+  const held = await clock.innerText();
+  await page.waitForTimeout(1500);
+  await expect(clock).toHaveText(held);
+  await page.getByRole("button", { name: /^Rewind/ }).click();
+  await expect(status).toHaveText(/Rewind/i);
+  await page.getByLabel("Go to date & time").fill("2027-01-01T21:30");
+  await expect(status).toHaveText(/Paused/i);
+  await expect(clock).toContainText("1 Jan, 2027");
+  await expect(clock).toContainText("09:30");
+  await page.getByRole("button", { name: "Back to now" }).click();
+  await expect(status).toHaveText(/Live/i);
+  await ctx.close();
+});

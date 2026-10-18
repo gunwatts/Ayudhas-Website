@@ -10,17 +10,22 @@ import { compassPoint, dayEvents, type DayEvents, type MoonEvent, snapshot, type
 import type { SolarEngine, Target, ViewMode } from "./engine";
 import {
   DEFAULT_LOCATION, locateDevice, type Location, placeName, type PlaceResult, satelliteImageUrl,
-  searchPlaces, timeZoneAt, zoneOffsetSeconds,
+  fromWallTime, searchPlaces, timeZoneAt, toWallTime, zoneOffsetSeconds,
 } from "./live";
 import { PhaseIcon } from "./phase-icon";
 
-const SPEEDS = [
-  { value: 1, label: "Live", title: "Real time" },
+/** How fast ◀◀ and ▶▶ run time, in simulated seconds per real second. */
+const RATES = [
   { value: 600, label: "10 min/s", title: "Ten minutes every second" },
   { value: 3600, label: "1 h/s", title: "One hour every second" },
   { value: 86_400, label: "1 day/s", title: "One day every second" },
 ];
-const SCRUB_HOURS = 48;
+/** The timeline slider spans this many hours either side of where you are in time. */
+const SCRUB_HOURS = 24;
+const SCRUB_MS = SCRUB_HOURS * 3_600_000;
+/** The date picker's range: Astronomy Engine is accurate well beyond it. */
+const PICK_MIN = "1900-01-01T00:00";
+const PICK_MAX = "2100-12-31T23:59";
 const LIVE_TOLERANCE_MS = 45_000;
 const QUARTER_NAMES: Record<MoonEvent["kind"], string> = { new: "New Moon", first: "First Quarter", full: "Full Moon", last: "Last Quarter" };
 
@@ -32,8 +37,6 @@ function retime(sim: RefObject<SimClock>, at: number | "now", speed: number) {
   sim.current = { real, at: at === "now" ? real : at, speed };
 }
 
-/** Milliseconds from the real present, for a slider value in minutes. */
-const fromNow = (minutes: number) => Date.now() + minutes * 60_000;
 
 const fmtNumber = (n: number, digits = 0) => n.toLocaleString("en-IN", { maximumFractionDigits: digits, minimumFractionDigits: digits });
 const fmtDeg = (n: number) => `${n.toFixed(1)}°`;
@@ -49,6 +52,7 @@ export function SolarVision() {
   const moonLabel = useRef<HTMLDivElement>(null);
   const youLabel = useRef<HTMLDivElement>(null);
   const headingRef = useRef<HTMLSpanElement>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
   const engineRef = useRef<SolarEngine | null>(null);
   const reduce = useReducedMotion();
 
@@ -67,7 +71,13 @@ export function SolarVision() {
   const [locating, setLocating] = useState(false);
   const [locError, setLocError] = useState<string | null>(null);
   const [tick, setTick] = useState<{ sim: Date; real: number } | null>(null);
+  // Simulated seconds per real second: 1 real time, 0 paused, ±rate fast forward or rewind.
   const [speed, setSpeed] = useState(1);
+  const [rate, setRate] = useState(RATES[0].value);
+  // The middle of the timeline slider (ms); null follows the real present.
+  const [center, setCenter] = useState<number | null>(null);
+  // While the date box has focus it holds what is being typed, instead of ticking along with the clock.
+  const [pickDraft, setPickDraft] = useState<string | null>(null);
   const [constellations, setConstellations] = useState(false);
   const [trueScale, setTrueScale] = useState(false);
   const [panelOpen, setPanelOpen] = useState(false);
@@ -94,7 +104,7 @@ export function SolarVision() {
         labels: { sun: sunLabel.current ?? undefined, moon: moonLabel.current ?? undefined, you: youLabel.current ?? undefined },
         reducedMotion: window.matchMedia("(prefers-reduced-motion: reduce)").matches,
         clock,
-        fast: () => sim.current.speed > 1,
+        fast: () => Math.abs(sim.current.speed) > 1,
         insets: () => (window.innerWidth > 860
           ? { top: 130, right: 390, bottom: 110, left: 16 }
           : { top: 170, right: 16, bottom: 210, left: 16 }),
@@ -136,6 +146,14 @@ export function SolarVision() {
     const s = snapshot(clock(), place);
     engineRef.current?.lookAt(s.moon.altitude > 3 ? "moon" : s.sun.altitude > 3 ? "sun" : place.lat >= 0 ? "south" : "north");
   }, [status, clock, place]);
+
+  // The data panel sits just above the time bar, whose height changes with the screen and its wrapping controls.
+  const timeBarRef = useCallback((el: HTMLElement | null) => {
+    if (!el) return;
+    const ro = new ResizeObserver(() => rootRef.current?.style.setProperty("--sv-time-h", `${el.offsetHeight}px`));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
 
   /* ----------------------------------------------------------- location */
 
@@ -190,10 +208,15 @@ export function SolarVision() {
 
   /* ----------------------------------------------------------- the clock and the numbers */
 
-  const refresh = useCallback(() => setTick({ sim: clock(), real: new Date().getTime() }), [clock]);
+  const refresh = useCallback(() => {
+    const t = clock();
+    setTick({ sim: t, real: new Date().getTime() });
+    // Running off either end of the timeline re-centres it, so the slider always has room both ways.
+    setCenter((c) => (c !== null && Math.abs(t.getTime() - c) > SCRUB_MS ? t.getTime() : c));
+  }, [clock]);
   useEffect(() => {
     const first = requestAnimationFrame(refresh);
-    const id = window.setInterval(refresh, speed > 1 ? 250 : 1000);
+    const id = window.setInterval(refresh, Math.abs(speed) > 1 ? 200 : 1000);
     return () => { cancelAnimationFrame(first); window.clearInterval(id); };
   }, [refresh, speed]);
 
@@ -207,14 +230,40 @@ export function SolarVision() {
   );
   const offsetFromNow = tick ? tick.sim.getTime() - tick.real : 0;
   const live = speed === 1 && Math.abs(offsetFromNow) < LIVE_TOLERANCE_MS;
+  const sliderMid = center ?? tick?.real ?? 0;
+  const sliderMinutes = tick ? Math.round(Math.max(-SCRUB_MS, Math.min(SCRUB_MS, tick.sim.getTime() - sliderMid)) / 60_000) : 0;
+  const rateLabel = RATES.find((r) => r.value === rate)?.label ?? "";
 
-  const chooseSpeed = (value: number) => {
-    retime(sim, clock().getTime(), value);
-    setSpeed(value);
+  /** Keep the current moment, change how time runs. */
+  const run = (nextSpeed: number) => {
+    const at = clock().getTime();
+    retime(sim, at, nextSpeed);
+    setSpeed(nextSpeed);
+    setCenter((c) => c ?? at);
     refresh();
   };
-  const backToNow = () => { retime(sim, "now", 1); setSpeed(1); refresh(); };
-  const scrubTo = (minutes: number) => { retime(sim, fromNow(minutes), sim.current.speed); refresh(); };
+  const togglePause = () => run(speed === 0 ? 1 : 0);
+  const chooseRate = (value: number) => {
+    setRate(value);
+    // Already fast-forwarding or rewinding: switch to the new rate in the same direction.
+    if (Math.abs(speed) > 1) run(Math.sign(speed) * value);
+  };
+  const backToNow = () => { retime(sim, "now", 1); setSpeed(1); setCenter(null); refresh(); };
+  const scrubTo = (minutes: number) => {
+    const mid = center ?? Date.now();
+    retime(sim, mid + minutes * 60_000, sim.current.speed);
+    setCenter(mid);
+    refresh();
+  };
+  /** Jump to a date and time typed in the place's own time zone, and hold there. */
+  const goTo = (value: string) => {
+    const at = fromWallTime(value, timeZone);
+    if (!at) return;
+    retime(sim, at.getTime(), 0);
+    setSpeed(0);
+    setCenter(at.getTime());
+    refresh();
+  };
 
   const fmtTime = useCallback((d: Date | null, withDate = false) => {
     if (!d) return "—";
@@ -246,7 +295,7 @@ export function SolarVision() {
   /* ----------------------------------------------------------- view */
 
   return (
-    <div className={`sv sv-${mode}`} data-status={status}>
+    <div ref={rootRef} className={`sv sv-${mode}`} data-status={status}>
       <canvas ref={canvasRef} className="sv-canvas" aria-label={mode === "sky"
         ? `Live 3D sky over ${location.name}. Drag to look around, scroll or pinch to zoom.`
         : "Live 3D view of the Earth, the Moon and the Sun from space. Drag to orbit, scroll or pinch to zoom."} />
@@ -411,10 +460,25 @@ export function SolarVision() {
         </section>
       </aside>
 
-      <footer className="sv-time" aria-label="Time">
+      <footer ref={timeBarRef} className="sv-time" aria-label="Time">
         <div className="sv-clock">
-          <span className={`sv-live ${live ? "on" : ""}`}>{live ? "Live" : speed > 1 ? "Fast" : "Shifted"}</span>
+          <span className={`sv-live ${live ? "on" : ""}`} aria-live="polite">
+            {live ? "Live" : speed === 0 ? "Paused" : speed < 0 ? `Rewind · ${rateLabel}` : speed > 1 ? `Fast · ${rateLabel}` : "Running · shifted"}
+          </span>
           <time dateTime={now.toISOString()}>{fmtDateTime.format(now)}</time>
+          <label className="sv-pick">
+            <span>Go to date &amp; time</span>
+            <input
+              type="datetime-local"
+              step={60}
+              min={PICK_MIN}
+              max={PICK_MAX}
+              value={pickDraft ?? toWallTime(now, timeZone)}
+              onFocus={() => setPickDraft(toWallTime(now, timeZone))}
+              onBlur={() => setPickDraft(null)}
+              onChange={(e) => { setPickDraft(e.target.value); goTo(e.target.value); }}
+            />
+          </label>
         </div>
         <input
           className="sv-scrub"
@@ -422,17 +486,22 @@ export function SolarVision() {
           min={-SCRUB_HOURS * 60}
           max={SCRUB_HOURS * 60}
           step={5}
-          value={Math.round(Math.max(-SCRUB_HOURS * 60, Math.min(SCRUB_HOURS * 60, offsetFromNow / 60_000)))}
+          value={sliderMinutes}
           onChange={(e) => scrubTo(Number(e.target.value))}
-          aria-label="Shift time, up to two days either way"
+          aria-label="Move through time, up to a day either way"
         />
-        <div className="sv-speeds" role="group" aria-label="Time speed">
-          {SPEEDS.map((s) => (
-            <button key={s.value} className="sv-chip" aria-pressed={speed === s.value} title={s.title} onClick={() => (s.value === 1 ? backToNow() : chooseSpeed(s.value))}>
-              {s.label}
-            </button>
-          ))}
-          {!live && <button className="sv-chip sv-now" onClick={backToNow}>Back to now</button>}
+        <div className="sv-speeds" role="group" aria-label="Time controls">
+          <button className="sv-chip sv-transport" aria-pressed={speed < 0} onClick={() => run(-rate)} aria-label={`Rewind at ${rateLabel}`} title={`Rewind at ${rateLabel}`}>◀◀</button>
+          <button className="sv-chip sv-transport sv-play" onClick={togglePause} aria-label={speed === 0 ? "Play in real time" : "Pause"} title={speed === 0 ? "Play in real time" : "Pause"}>
+            {speed === 0 ? "▶" : "❚❚"}
+          </button>
+          <button className="sv-chip sv-transport" aria-pressed={speed > 1} onClick={() => run(rate)} aria-label={`Fast forward at ${rateLabel}`} title={`Fast forward at ${rateLabel}`}>▶▶</button>
+          <span className="sv-rates" role="group" aria-label="Rewind and fast-forward speed">
+            {RATES.map((r) => (
+              <button key={r.value} className="sv-chip" aria-pressed={rate === r.value} title={r.title} onClick={() => chooseRate(r.value)}>{r.label}</button>
+            ))}
+          </span>
+          <button className={`sv-chip ${live ? "" : "sv-now"}`} aria-pressed={live} onClick={backToNow}>{live ? "Live" : "Back to now"}</button>
         </div>
       </footer>
       </>)}
