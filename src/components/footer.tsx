@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 import { SITE } from "@/content/site";
 
 import { Logo } from "./logo";
@@ -14,6 +16,7 @@ export function Footer() {
           <span className="label">Products</span>
           <a href={SITE.financeUrl}>Ayudhas Finance ↗</a>
           <a href="#pro">Ayudhas Pro · Android (closed testing)</a>
+          <Link href="/solar-vision/">Solar Vision · live Sun &amp; Moon</Link>
         </nav>
         <nav aria-label="Explore" className="footer-col">
           <span className="label">Explore</span>

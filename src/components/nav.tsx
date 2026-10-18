@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 
 import { SITE } from "@/content/site";
@@ -34,6 +35,8 @@ export function Nav() {
   useEffect(() => {
     let last = window.scrollY;
     let frame = 0;
+    // A wheel or trackpad flick upwards shows the bar at once, even while smooth scrolling is still gliding down.
+    let upUntil = 0;
     const paint = () => {
       frame = 0;
       const y = window.scrollY;
@@ -43,14 +46,20 @@ export function Nav() {
       barRef.current?.style.setProperty("transform", `scaleX(${max > 0 ? Math.min(1, y / max).toFixed(4) : 0})`);
       if (header) {
         const keep = openRef.current || header.contains(document.activeElement) || y < window.innerHeight * 0.8;
-        if (keep || y < last - 4) delete header.dataset.hidden;
+        if (keep || y < last - 4 || performance.now() < upUntil) delete header.dataset.hidden;
         else if (y > last + 4) header.dataset.hidden = "true";
       }
       last = y;
     };
     const onScroll = () => { if (!frame) frame = requestAnimationFrame(paint); };
+    const onWheel = (e: WheelEvent) => {
+      if (e.deltaY >= -2) return;
+      upUntil = performance.now() + 900;
+      delete headerRef.current?.dataset.hidden;
+    };
     onScroll();
     window.addEventListener("scroll", onScroll, { passive: true });
+    window.addEventListener("wheel", onWheel, { passive: true });
     const io = new IntersectionObserver(
       (entries) => entries.forEach((e) => e.isIntersecting && setActive("#" + e.target.id)),
       { rootMargin: "-45% 0px -50% 0px" },
@@ -62,6 +71,7 @@ export function Nav() {
     return () => {
       cancelAnimationFrame(frame);
       window.removeEventListener("scroll", onScroll);
+      window.removeEventListener("wheel", onWheel);
       io.disconnect();
     };
   }, []);
@@ -106,6 +116,7 @@ export function Nav() {
             <a key={l.href} href={l.href} aria-current={active === l.href ? "location" : undefined}>{l.label}</a>
           ))}
         </nav>
+        <Link className="btn btn-ghost nav-cta nav-solar" href="/solar-vision/"><span className="nav-solar-dot" aria-hidden />Solar Vision</Link>
         <a className="btn btn-ghost nav-cta" href={SITE.financeUrl}>Ayudhas Finance ↗</a>
         <button
           type="button"
@@ -124,7 +135,10 @@ export function Nav() {
           {LINKS.map((l, i) => (
             <a key={l.href} href={l.href} style={{ ["--i" as string]: i }} onClick={() => setOpen(false)}>{l.label}</a>
           ))}
-          <a href={SITE.financeUrl} className="btn btn-primary" style={{ ["--i" as string]: LINKS.length }} onClick={() => setOpen(false)}>
+          <Link href="/solar-vision/" className="btn btn-ghost" style={{ ["--i" as string]: LINKS.length }} onClick={() => setOpen(false)}>
+            <span className="nav-solar-dot" aria-hidden />Solar Vision: live Sun &amp; Moon
+          </Link>
+          <a href={SITE.financeUrl} className="btn btn-primary" style={{ ["--i" as string]: LINKS.length + 1 }} onClick={() => setOpen(false)}>
             Open Ayudhas Finance ↗
           </a>
         </nav>
