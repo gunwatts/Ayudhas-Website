@@ -378,7 +378,8 @@ export function createWorld(o: WorldOptions): WorldController {
       tool.tick?.();
     }
 
-    state.tags = ws.tags * smoothstep(0.45, 1, state.intro);
+    // The floating labels belong to the opening shot: gone by the time the hero copy has scrolled away.
+    state.tags = ws.tags * smoothstep(0.45, 1, state.intro) * (1 - smoothstep(0.05, 0.4, state.smooth));
     placeTags(fov, focus);
 
     if (pointer.moved) {
