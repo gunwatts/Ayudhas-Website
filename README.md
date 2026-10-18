@@ -39,6 +39,11 @@ https://finance.ayudhas.com.
   - Full screen (⛶): hides every control and label and asks the browser for real full screen (Android hides its
     status and navigation bars; iPhones do not allow it for web pages, so there the sky fills the browser window).
     The page is edge to edge (`viewport-fit=cover`); a fading "✕ Controls" button brings everything back.
+  - Ceiling view (`?ceiling`, built from Rooftop sky → Ceiling): the sky straight overhead for projecting onto a
+    ceiling, north up and east on the left as seen lying down, with constellation figures and names (English or
+    Hindi), the planets and the Moon; no controls; set entirely by the link (place, rotation, mirror, field of view,
+    brightness, red night light, dark by day, clock, lighter rendering). `src/components/solar/ceiling.ts` documents
+    every option; `deploy/ceiling-pi/` has the Raspberry Pi setup script and guide.
   - All positions are computed in the browser with Astronomy Engine (no server, no API key);
     `src/__tests__/astro.test.ts` checks them against USNO almanac times. Every online service is free, keyless and
     allows commercial use: browser geolocation (asks permission), BigDataCloud client-side reverse geocoding (only

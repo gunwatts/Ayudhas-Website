@@ -66,3 +66,13 @@ describe("wall time in a place's time zone", () => {
     expect(fromWallTime("not a date", "Europe/London")).toBeNull();
   });
 });
+
+describe("planets", () => {
+  it("puts Venus near its known brightness and keeps every planet's direction a unit vector", () => {
+    const s = snapshot(new Date("2026-10-18T14:00:00Z"), HYDERABAD);
+    expect(s.planets.map((p) => p.id)).toEqual(["mercury", "venus", "mars", "jupiter", "saturn"]);
+    const venus = s.planets.find((p) => p.id === "venus")!;
+    expect(venus.magnitude).toBeLessThan(-3.5); // Venus is always brighter than -3.5
+    for (const p of s.planets) expect(Math.hypot(...p.dir)).toBeCloseTo(1, 6);
+  });
+});

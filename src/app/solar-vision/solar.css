@@ -200,3 +200,28 @@
   backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); transition: opacity 0.6s var(--ease-out);
 }
 .sv-exit.idle { opacity: 0.18; }
+
+/* ---------- ceiling mode: only the sky, for a projector ---------- */
+.sv-ceiling { cursor: none; }
+.sv-ceiling :is(.sv-head, .sv-panel, .sv-time, .sv-tag, .sv-builder, .sv-exit:not(.sv-ceiling-exit)) { display: none; }
+.sv-ceiling.hint { cursor: default; }
+.sv-cover { position: absolute; inset: 0; z-index: 2; background: #000; pointer-events: none; transition: opacity 4s linear; }
+.sv-ceiling-info { position: absolute; z-index: 3; left: max(18px, env(safe-area-inset-left)); bottom: max(14px, env(safe-area-inset-bottom)); margin: 0; font-size: 0.85rem; color: #cdd7ff; letter-spacing: 0.04em; pointer-events: none; }
+.sv-ceiling-exit { text-decoration: none; opacity: 0; pointer-events: none; transition: opacity 0.4s; }
+.sv-ceiling.hint .sv-ceiling-exit { opacity: 1; pointer-events: auto; }
+
+/* ---------- the ceiling view's settings ---------- */
+.sv-builder { background: #0a0d24; z-index: 7; top: calc(max(10px, env(safe-area-inset-top)) + var(--sv-head-h, 100px) + 8px); left: max(10px, env(safe-area-inset-left)); width: min(380px, calc(100% - 20px)); max-height: calc(100dvh - var(--sv-head-h, 100px) - var(--sv-time-h, 120px) - 40px); overflow: auto; display: grid; gap: 0.75rem; }
+.sv-builder-head { display: flex; align-items: center; justify-content: space-between; }
+.sv-builder h2 { font-size: 1.05rem; }
+.sv-row { display: grid; gap: 0.3rem; font-size: 0.82rem; color: var(--muted); }
+.sv-row b { color: var(--text); font-variant-numeric: tabular-nums; }
+.sv-row input[type="range"] { width: 100%; accent-color: var(--cyan); }
+.sv-seg { display: inline-flex; padding: 3px; border-radius: 999px; background: rgb(255 255 255 / 0.06); border: 1px solid rgb(255 255 255 / 0.1); justify-self: start; }
+.sv-seg button { border: 0; background: none; color: var(--muted); padding: 0.35rem 0.8rem; border-radius: 999px; font-weight: 700; font-size: 0.8rem; cursor: pointer; }
+.sv-seg button[aria-checked="true"] { background: linear-gradient(100deg, var(--blue), var(--violet)); color: #fff; }
+.sv-checks { display: grid; gap: 0.45rem; font-size: 0.85rem; }
+.sv-checks label { display: flex; align-items: center; gap: 0.55rem; cursor: pointer; }
+.sv-checks input { width: 18px; height: 18px; accent-color: var(--cyan); }
+.sv-builder-actions { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; }
+.sv-btn-link { display: inline-flex; align-items: center; padding: 0 1.2rem; text-decoration: none; }

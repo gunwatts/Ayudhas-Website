@@ -1,12 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { type RefObject, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { type RefObject, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 
 import { Logo } from "@/components/logo";
 import { useReducedMotion } from "@/lib/motion";
 
 import { compassPoint, dayEvents, type DayEvents, type MoonEvent, snapshot, type Snapshot, startOfLocalDay } from "./astro";
+import { type CeilingConfig, ceilingLink, dayCover, parseCeiling } from "./ceiling";
 import type { SolarEngine, Target, ViewMode } from "./engine";
 import {
   DEFAULT_LOCATION, locateDevice, type Location, placeName, type PlaceResult, satelliteImageUrl,
@@ -92,7 +93,25 @@ export function SolarVision() {
 
   const [mode, setMode] = useState<ViewMode>("sky");
   const [status, setStatus] = useState<"loading" | "ready" | "failed">("loading");
-  const [location, setLocation] = useState<Location>(DEFAULT_LOCATION);
+  const [chosen, setLocation] = useState<Location>(DEFAULT_LOCATION);
+  // Ceiling mode comes from the link (?ceiling...), read in the browser only.
+  const urlQuery = useSyncExternalStore(
+    (cb) => { window.addEventListener("popstate", cb); return () => window.removeEventListener("popstate", cb); },
+    () => window.location.search,
+    () => "",
+  );
+  const ceiling = useMemo(() => parseCeiling(urlQuery), [urlQuery]);
+  const [paramTz, setParamTz] = useState<string | undefined>(undefined);
+  // A place given in the link wins over the browser's location, so a computer with no one at it needs no prompt.
+  const location: Location = useMemo(() => (ceiling?.place
+    ? { lat: ceiling.place.lat, lon: ceiling.place.lon, height: 0, name: ceiling.place.name, source: "search", timeZone: ceiling.place.tz ?? paramTz }
+    : chosen), [ceiling, chosen, paramTz]);
+  const [ceilingHint, setCeilingHint] = useState(false);
+  const [builderOpen, setBuilderOpen] = useState(false);
+  const [builder, setBuilder] = useState<Omit<CeilingConfig, "place">>({
+    rotation: 0, fov: 100, flip: false, names: "en", lines: true, bright: 0.85, red: false, day: "dark", info: false, lite: false,
+  });
+  const [copied, setCopied] = useState(false);
   const [locating, setLocating] = useState(false);
   const [locError, setLocError] = useState<string | null>(null);
   const [tick, setTick] = useState<{ sim: Date; real: number } | null>(null);
@@ -128,6 +147,7 @@ export function SolarVision() {
         canvas,
         labels: { sun: sunLabel.current ?? undefined, moon: moonLabel.current ?? undefined, you: youLabel.current ?? undefined },
         reducedMotion: window.matchMedia("(prefers-reduced-motion: reduce)").matches,
+        lite: parseCeiling(window.location.search)?.lite,
         clock,
         fast: () => Math.abs(sim.current.speed) > 1,
         // Off-screen labels ride the edges of the open sky, never under a panel.
@@ -164,18 +184,63 @@ export function SolarVision() {
 
   useEffect(() => { engineRef.current?.setPlace(place); }, [place, status]);
   useEffect(() => { engineRef.current?.setMode(mode); }, [mode, status]);
-  useEffect(() => { engineRef.current?.setConstellations(constellations); }, [constellations, status]);
+  useEffect(() => {
+    const e = engineRef.current;
+    if (!e) return;
+    if (ceiling) {
+      e.setConstellations({ lines: ceiling.lines, names: ceiling.names !== "off" });
+      e.setNameLanguage(ceiling.names === "hi" ? "hi" : "en");
+      e.setCeiling({ rotation: ceiling.rotation, fov: ceiling.fov });
+    } else {
+      e.setConstellations(constellations);
+      e.setCeiling(null);
+    }
+  }, [ceiling, constellations, status]);
+
+  /* ----------------------------------------------------------- ceiling mode */
+
+  // A place in the link without a time zone gets one from the offline map.
+  useEffect(() => {
+    if (!ceiling?.place || ceiling.place.tz) return;
+    let alive = true;
+    void timeZoneAt(ceiling.place.lat, ceiling.place.lon).then((tz) => { if (alive) setParamTz(tz); });
+    return () => { alive = false; };
+  }, [ceiling]);
+
+  // Keep the screen (and so the projector's picture) on all night.
+  useEffect(() => {
+    if (!ceiling) return;
+    let lock: { release: () => Promise<void> } | null = null;
+    const nav = navigator as Navigator & { wakeLock?: { request: (t: "screen") => Promise<{ release: () => Promise<void> }> } };
+    const take = () => { if (document.visibilityState === "visible") nav.wakeLock?.request("screen").then((l) => { lock = l; }).catch(() => undefined); };
+    take();
+    document.addEventListener("visibilitychange", take);
+    return () => { document.removeEventListener("visibilitychange", take); void lock?.release().catch(() => undefined); };
+  }, [ceiling]);
+
+  // A way back out: shown for a few seconds whenever someone moves the mouse or touches the screen.
+  useEffect(() => {
+    if (!ceiling) return;
+    let timer = 0;
+    const show = () => { setCeilingHint(true); window.clearTimeout(timer); timer = window.setTimeout(() => setCeilingHint(false), 3000); };
+    // A full load on the way out (not a client-side route): the 3D view restarts with the normal settings.
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") window.location.assign(new URL("/solar-vision/", window.location.href).href); };
+    window.addEventListener("pointermove", show);
+    window.addEventListener("pointerdown", show);
+    window.addEventListener("keydown", onKey);
+    return () => { window.clearTimeout(timer); window.removeEventListener("pointermove", show); window.removeEventListener("pointerdown", show); window.removeEventListener("keydown", onKey); };
+  }, [ceiling]);
   useEffect(() => { engineRef.current?.setTrueScale(trueScale); }, [trueScale, status]);
   useEffect(() => { engineRef.current?.setReducedMotion(reduce); }, [reduce, status]);
 
   // Start by facing the Moon if it is up, otherwise the Sun if it is up, otherwise south.
   const aimed = useRef(false);
   useEffect(() => {
-    if (status !== "ready" || aimed.current) return;
+    if (status !== "ready" || aimed.current || ceiling) return;
     aimed.current = true;
     const s = snapshot(clock(), place);
     engineRef.current?.lookAt(s.moon.altitude > 3 ? "moon" : s.sun.altitude > 3 ? "sun" : place.lat >= 0 ? "south" : "north");
-  }, [status, clock, place]);
+  }, [status, clock, place, ceiling]);
 
   /* ----------------------------------------------------------- full screen */
 
@@ -341,6 +406,15 @@ export function SolarVision() {
   const sunUp = (snap?.sun.altitude ?? -1) > -0.83;
   const dayLength = events?.sunrise && events.sunset ? (events.sunset.getTime() - events.sunrise.getTime()) / 3_600_000 : null;
   const southern = location.lat < 0;
+  // Ceiling by day: fade to black (the projector shows nothing), and stop drawing once it is fully dark.
+  const cover = ceiling && snap ? dayCover(snap.sun.altitude, ceiling.day) : 0;
+  useEffect(() => { engineRef.current?.setSuspended(cover > 0.999); }, [cover, status]);
+  const builtLink = typeof window === "undefined" ? "" : ceilingLink(`${window.location.origin}/solar-vision/`, {
+    ...builder, place: { lat: location.lat, lon: location.lon, name: location.name, tz: location.timeZone },
+  });
+  const copyLink = async () => {
+    try { await navigator.clipboard.writeText(builtLink); setCopied(true); window.setTimeout(() => setCopied(false), 2000); } catch { setCopied(false); }
+  };
 
   const look = (t: Target, closeUp?: boolean) => engineRef.current?.lookAt(t, closeUp);
 
@@ -356,11 +430,19 @@ export function SolarVision() {
   return (
     <div
       ref={rootRef}
-      className={`sv sv-${mode} ${immersive ? "sv-immersive" : ""}`}
+      className={`sv sv-${mode} ${immersive ? "sv-immersive" : ""} ${ceiling ? "sv-ceiling" : ""} ${ceilingHint ? "hint" : ""}`}
       data-status={status}
       onPointerDown={() => { if (immersive && exitIdle) setExitIdle(false); }}
     >
-      <canvas ref={canvasRef} className="sv-canvas" aria-label={mode === "sky"
+      <canvas
+        ref={canvasRef}
+        className="sv-canvas"
+        style={ceiling ? {
+          transform: ceiling.flip ? "scaleX(-1)" : undefined,
+          // Brightness, and the red night light: everything turned to deep red, which keeps night vision.
+          filter: `${ceiling.red ? "grayscale(1) sepia(1) saturate(7) hue-rotate(-50deg) " : ""}brightness(${ceiling.bright})`,
+        } : undefined}
+        aria-label={mode === "sky"
         ? `Live 3D sky over ${location.name}. Drag to look around, scroll or pinch to zoom.`
         : "Live 3D view of the Earth, the Moon and the Sun from space. Drag to orbit, scroll or pinch to zoom."} />
 
@@ -373,6 +455,19 @@ export function SolarVision() {
       <div ref={youLabel} className="sv-tag sv-tag-you" data-state="hidden" aria-hidden="true">
         <i className="sv-arrow" /><b>You are here</b><span>{location.name}</span>
       </div>
+
+      {ceiling && (
+        <>
+          <div className="sv-cover" style={{ opacity: cover }} aria-hidden />
+          {ceiling.info && snap && now && (
+            <p className="sv-ceiling-info" style={{ filter: ceiling.red ? "grayscale(1) sepia(1) saturate(7) hue-rotate(-50deg)" : undefined, opacity: 0.55 * ceiling.bright }}>
+              {fmtTime(now)} · {snap.moon.phaseName} {Math.round(snap.moon.illuminated * 100)}%
+            </p>
+          )}
+          {/* eslint-disable-next-line @next/next/no-html-link-for-pages -- a full load on purpose: the 3D view restarts with normal settings */}
+          <a className="sv-exit sv-ceiling-exit" href="/solar-vision/">✕ Leave ceiling view</a>
+        </>
+      )}
 
       {status !== "ready" && (
         <div className="sv-loading" role="status">
@@ -445,12 +540,57 @@ export function SolarVision() {
         </div>
       )}
 
+      {builderOpen && (
+        <div className="sv-sheet sv-builder" role="dialog" aria-label="Ceiling view">
+          <div className="sv-builder-head">
+            <h2>Ceiling view</h2>
+            <button className="sv-chip sv-icon" onClick={() => setBuilderOpen(false)} aria-label="Close">✕</button>
+          </div>
+          <p className="sv-note">The live sky straight overhead at {location.name}, to project on a ceiling. Open this link on the computer that drives the projector.</p>
+          <label className="sv-row">
+            <span>Turn the picture <b>{builder.rotation}°</b></span>
+            <input type="range" min={0} max={355} step={5} value={builder.rotation} onChange={(e) => setBuilder((b) => ({ ...b, rotation: Number(e.target.value) }))} />
+          </label>
+          <label className="sv-row">
+            <span>Sky shown, top to bottom <b>{builder.fov}°</b></span>
+            <input type="range" min={60} max={140} step={5} value={builder.fov} onChange={(e) => setBuilder((b) => ({ ...b, fov: Number(e.target.value) }))} />
+          </label>
+          <label className="sv-row">
+            <span>Brightness <b>{Math.round(builder.bright * 100)}%</b></span>
+            <input type="range" min={0.1} max={1} step={0.05} value={builder.bright} onChange={(e) => setBuilder((b) => ({ ...b, bright: Number(e.target.value) }))} />
+          </label>
+          <div className="sv-row">
+            <span>Names</span>
+            <div className="sv-seg" role="radiogroup" aria-label="Constellation names">
+              {(["en", "hi", "off"] as const).map((n) => (
+                <button key={n} role="radio" aria-checked={builder.names === n} onClick={() => setBuilder((b) => ({ ...b, names: n }))}>
+                  {n === "en" ? "English" : n === "hi" ? "हिंदी" : "None"}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="sv-checks">
+            <label><input type="checkbox" checked={builder.lines} onChange={(e) => setBuilder((b) => ({ ...b, lines: e.target.checked }))} /> Constellation figures</label>
+            <label><input type="checkbox" checked={builder.red} onChange={(e) => setBuilder((b) => ({ ...b, red: e.target.checked }))} /> Red night light</label>
+            <label><input type="checkbox" checked={builder.day === "dark"} onChange={(e) => setBuilder((b) => ({ ...b, day: e.target.checked ? "dark" : "sky" }))} /> Dark by day</label>
+            <label><input type="checkbox" checked={builder.flip} onChange={(e) => setBuilder((b) => ({ ...b, flip: e.target.checked }))} /> Mirror (if east and west look swapped)</label>
+            <label><input type="checkbox" checked={builder.info} onChange={(e) => setBuilder((b) => ({ ...b, info: e.target.checked }))} /> Small clock</label>
+            <label><input type="checkbox" checked={builder.lite} onChange={(e) => setBuilder((b) => ({ ...b, lite: e.target.checked }))} /> Lighter (Raspberry Pi)</label>
+          </div>
+          <div className="sv-builder-actions">
+            <a className="sv-btn sv-btn-primary sv-btn-link" href={builtLink}>Open ceiling view</a>
+            <button className="sv-chip" onClick={() => void copyLink()}>{copied ? "Copied" : "Copy link"}</button>
+          </div>
+        </div>
+      )}
+
       {mode === "sky" ? (
         <div className="sv-tools" aria-label="Sky controls">
           <button className="sv-chip" onClick={() => look("moon")}>Find the Moon</button>
           <button className="sv-chip" onClick={() => look("moon", true)}>Moon close-up</button>
           <button className="sv-chip" onClick={() => look("sun")}>Find the Sun</button>
           <button className="sv-chip" aria-pressed={constellations} onClick={() => setConstellations((v) => !v)}>Constellations</button>
+          <button className="sv-chip" aria-expanded={builderOpen} onClick={() => setBuilderOpen((v) => !v)}>Ceiling</button>
           {canCompass && <button className="sv-chip" aria-pressed={compassOn} onClick={() => void toggleCompass()}>Point my phone</button>}
           <span className="sv-zoom">
             <button className="sv-chip" onClick={() => engineRef.current?.zoom(0.7)} aria-label="Zoom in">+</button>
