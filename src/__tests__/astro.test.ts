@@ -54,3 +54,15 @@ describe("astronomy", () => {
     expect(compassPoint(359)).toBe("N");
   });
 });
+
+describe("wall time in a place's time zone", () => {
+  it("round-trips a moment through the date-time picker value, across daylight saving", async () => {
+    const { fromWallTime, toWallTime } = await import("@/components/solar/live");
+    expect(toWallTime(new Date("2026-10-18T12:45:00Z"), "Asia/Kolkata")).toBe("2026-10-18T18:15");
+    expect(fromWallTime("2026-10-18T18:15", "Asia/Kolkata")?.toISOString()).toBe("2026-10-18T12:45:00.000Z");
+    // London: BST in July, GMT in December.
+    expect(fromWallTime("2026-07-01T21:00", "Europe/London")?.toISOString()).toBe("2026-07-01T20:00:00.000Z");
+    expect(fromWallTime("2026-12-01T21:00", "Europe/London")?.toISOString()).toBe("2026-12-01T21:00:00.000Z");
+    expect(fromWallTime("not a date", "Europe/London")).toBeNull();
+  });
+});

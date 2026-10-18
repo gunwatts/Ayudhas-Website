@@ -2,7 +2,9 @@
  * Live data from free, keyless services, all fetched from the visitor's browser:
  * - the browser's Geolocation API (asks the visitor's permission), for where they are;
  * - BigDataCloud's client-side reverse geocoding, for the place's name;
- * - Open-Meteo, for the time zone, current cloud cover and visibility, and for searching a place by name;
+ * - OpenStreetMap's Nominatim, for searching a place by name (on submit only, as its usage policy asks; results
+ *   credit OpenStreetMap contributors);
+ * - an offline time-zone map (@photostructure/tz-lookup, CC0), loaded only when a searched place needs it;
  * - NASA GIBS, for yesterday's full-Earth satellite image (VIIRS true colour), so the globe shows real clouds.
  * Each call fails soft: the view keeps working from the astronomy alone.
  */
@@ -19,15 +21,7 @@ export type Location = {
   timeZone?: string;
 };
 
-export type Weather = {
-  cloudCover: number; // 0..1
-  visibilityKm: number | null;
-  temperatureC: number | null;
-  utcOffsetSeconds: number;
-  timeZone: string;
-};
-
-export type PlaceResult = { name: string; detail: string; lat: number; lon: number; height: number; timeZone?: string };
+export type PlaceResult = { name: string; detail: string; lat: number; lon: number; height: number };
 
 /** Used until the visitor shares a location or picks one: Hyderabad, India. */
 export const DEFAULT_LOCATION: Location = {
@@ -90,45 +84,50 @@ export async function placeName(lat: number, lon: number): Promise<string | null
   }
 }
 
-type OpenMeteo = {
-  utc_offset_seconds: number;
-  timezone: string;
-  elevation?: number;
-  current?: { cloud_cover?: number; visibility?: number; temperature_2m?: number };
-};
+type Nominatim = {
+  lat: string;
+  lon: string;
+  name?: string;
+  display_name: string;
+  address?: { city?: string; town?: string; village?: string; state?: string; country?: string };
+}[];
 
-export async function weather(lat: number, lon: number): Promise<Weather | null> {
-  try {
-    const r = await getJson<OpenMeteo>(
-      `https://api.open-meteo.com/v1/forecast?latitude=${lat.toFixed(4)}&longitude=${lon.toFixed(4)}&current=cloud_cover,visibility,temperature_2m&timezone=auto`,
-    );
+/** Search places by name with OpenStreetMap's Nominatim. Call it when the visitor submits, never per keystroke. */
+export async function searchPlaces(query: string): Promise<PlaceResult[]> {
+  const q = query.trim();
+  if (q.length < 2) return [];
+  const r = await getJson<Nominatim>(
+    `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&format=jsonv2&limit=6&addressdetails=1&accept-language=en`,
+    0,
+  );
+  const seen = new Set<string>();
+  return r.map((p) => {
+    const a = p.address ?? {};
+    const name = p.name || a.city || a.town || a.village || p.display_name.split(",")[0];
     return {
-      cloudCover: (r.current?.cloud_cover ?? 0) / 100,
-      visibilityKm: r.current?.visibility != null ? r.current.visibility / 1000 : null,
-      temperatureC: r.current?.temperature_2m ?? null,
-      utcOffsetSeconds: r.utc_offset_seconds,
-      timeZone: r.timezone,
+      name,
+      detail: [a.state, a.country].filter((part) => part && part !== name).join(", ") || p.display_name,
+      lat: Number(p.lat),
+      lon: Number(p.lon),
+      height: 0,
     };
-  } catch {
-    return null;
-  }
+  }).filter((p) => {
+    // A city and its district often share a name and sit a few kilometres apart: keep the first.
+    const key = `${p.name}|${p.detail}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
-type GeoSearch = { results?: { name: string; latitude: number; longitude: number; elevation?: number; admin1?: string; country?: string; timezone?: string }[] };
-
-export async function searchPlaces(query: string): Promise<PlaceResult[]> {
-  if (query.trim().length < 2) return [];
-  const r = await getJson<GeoSearch>(
-    `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(query.trim())}&count=6&language=en&format=json`,
-  );
-  return (r.results ?? []).map((p) => ({
-    name: p.name,
-    detail: [p.admin1, p.country].filter(Boolean).join(", "),
-    lat: p.latitude,
-    lon: p.longitude,
-    height: p.elevation ?? 0,
-    timeZone: p.timezone,
-  }));
+/** The IANA time zone at a point, from an offline boundary map bundled with the site (no network call). */
+export async function timeZoneAt(lat: number, lon: number): Promise<string | undefined> {
+  try {
+    const { default: tzlookup } = await import("@photostructure/tz-lookup");
+    return tzlookup(lat, lon);
+  } catch {
+    return undefined;
+  }
 }
 
 /** NASA GIBS: the whole Earth in true colour from the NOAA-20 VIIRS passes of the previous UTC day. */
@@ -152,4 +151,23 @@ export function zoneOffsetSeconds(timeZone: string | undefined, at: Date): numbe
   } catch {
     return -at.getTimezoneOffset() * 60;
   }
+}
+
+const pad = (n: number) => String(n).padStart(2, "0");
+
+/** A moment as the value of a `datetime-local` input, in the given time zone's wall time ("YYYY-MM-DDTHH:mm"). */
+export function toWallTime(at: Date, timeZone: string | undefined): string {
+  const local = new Date(at.getTime() + zoneOffsetSeconds(timeZone, at) * 1000);
+  return `${local.getUTCFullYear()}-${pad(local.getUTCMonth() + 1)}-${pad(local.getUTCDate())}T${pad(local.getUTCHours())}:${pad(local.getUTCMinutes())}`;
+}
+
+/** The moment a `datetime-local` value names in the given time zone, or null if it is not a valid date and time. */
+export function fromWallTime(value: string, timeZone: string | undefined): Date | null {
+  const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/.exec(value);
+  if (!m) return null;
+  const asUtc = Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]), Number(m[4]), Number(m[5]));
+  if (!Number.isFinite(asUtc)) return null;
+  // The offset depends on the moment itself (daylight saving), so settle it in two steps.
+  const first = asUtc - zoneOffsetSeconds(timeZone, new Date(asUtc)) * 1000;
+  return new Date(asUtc - zoneOffsetSeconds(timeZone, new Date(first)) * 1000);
 }

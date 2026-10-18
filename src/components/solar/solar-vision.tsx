@@ -6,21 +6,26 @@ import { type RefObject, useCallback, useEffect, useMemo, useRef, useState } fro
 import { Logo } from "@/components/logo";
 import { useReducedMotion } from "@/lib/motion";
 
-import { cloudTransmission, compassPoint, dayEvents, type DayEvents, type MoonEvent, snapshot, type Snapshot, startOfLocalDay } from "./astro";
+import { compassPoint, dayEvents, type DayEvents, type MoonEvent, snapshot, type Snapshot, startOfLocalDay } from "./astro";
 import type { SolarEngine, Target, ViewMode } from "./engine";
 import {
   DEFAULT_LOCATION, locateDevice, type Location, placeName, type PlaceResult, satelliteImageUrl,
-  searchPlaces, weather as fetchWeather, type Weather, zoneOffsetSeconds,
+  fromWallTime, searchPlaces, timeZoneAt, toWallTime, zoneOffsetSeconds,
 } from "./live";
 import { PhaseIcon } from "./phase-icon";
 
-const SPEEDS = [
-  { value: 1, label: "Live", title: "Real time" },
+/** How fast ◀◀ and ▶▶ run time, in simulated seconds per real second. */
+const RATES = [
   { value: 600, label: "10 min/s", title: "Ten minutes every second" },
   { value: 3600, label: "1 h/s", title: "One hour every second" },
   { value: 86_400, label: "1 day/s", title: "One day every second" },
 ];
-const SCRUB_HOURS = 48;
+/** The timeline slider spans this many hours either side of where you are in time. */
+const SCRUB_HOURS = 24;
+const SCRUB_MS = SCRUB_HOURS * 3_600_000;
+/** The date picker's range: Astronomy Engine is accurate well beyond it. */
+const PICK_MIN = "1900-01-01T00:00";
+const PICK_MAX = "2100-12-31T23:59";
 const LIVE_TOLERANCE_MS = 45_000;
 const QUARTER_NAMES: Record<MoonEvent["kind"], string> = { new: "New Moon", first: "First Quarter", full: "Full Moon", last: "Last Quarter" };
 
@@ -32,15 +37,13 @@ function retime(sim: RefObject<SimClock>, at: number | "now", speed: number) {
   sim.current = { real, at: at === "now" ? real : at, speed };
 }
 
-/** Milliseconds from the real present, for a slider value in minutes. */
-const fromNow = (minutes: number) => Date.now() + minutes * 60_000;
 
 const fmtNumber = (n: number, digits = 0) => n.toLocaleString("en-IN", { maximumFractionDigits: digits, minimumFractionDigits: digits });
 const fmtDeg = (n: number) => `${n.toFixed(1)}°`;
 
 /**
  * Solar Vision: the real Sun, Moon and Earth for the visitor's place and moment. Positions come from Astronomy
- * Engine in the browser (no server), weather from Open-Meteo, the globe's clouds from NASA GIBS. Time runs live,
+ * Engine in the browser (no server), the globe's clouds from NASA GIBS. Time runs live,
  * can be scrubbed two days either way, or fast-forwarded to watch the sky turn.
  */
 export function SolarVision() {
@@ -49,6 +52,7 @@ export function SolarVision() {
   const moonLabel = useRef<HTMLDivElement>(null);
   const youLabel = useRef<HTMLDivElement>(null);
   const headingRef = useRef<HTMLSpanElement>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
   const engineRef = useRef<SolarEngine | null>(null);
   const reduce = useReducedMotion();
 
@@ -66,21 +70,27 @@ export function SolarVision() {
   const [location, setLocation] = useState<Location>(DEFAULT_LOCATION);
   const [locating, setLocating] = useState(false);
   const [locError, setLocError] = useState<string | null>(null);
-  const [wx, setWx] = useState<Weather | null>(null);
   const [tick, setTick] = useState<{ sim: Date; real: number } | null>(null);
+  // Simulated seconds per real second: 1 real time, 0 paused, ±rate fast forward or rewind.
   const [speed, setSpeed] = useState(1);
+  const [rate, setRate] = useState(RATES[0].value);
+  // The middle of the timeline slider (ms); null follows the real present.
+  const [center, setCenter] = useState<number | null>(null);
+  // While the date box has focus it holds what is being typed, instead of ticking along with the clock.
+  const [pickDraft, setPickDraft] = useState<string | null>(null);
   const [constellations, setConstellations] = useState(false);
   const [trueScale, setTrueScale] = useState(false);
   const [panelOpen, setPanelOpen] = useState(false);
   const [placeOpen, setPlaceOpen] = useState(false);
   const [query, setQuery] = useState("");
-  const [results, setResults] = useState<PlaceResult[]>([]);
+  const [results, setResults] = useState<PlaceResult[] | null>(null);
+  const [searching, setSearching] = useState(false);
   const [compassOn, setCompassOn] = useState(false);
   const [canCompass, setCanCompass] = useState(false);
   const [satellite, setSatellite] = useState<"loading" | "ok" | "off">("loading");
 
   const place = useMemo(() => ({ lat: location.lat, lon: location.lon, height: Math.max(0, location.height) }), [location]);
-  const timeZone = wx?.timeZone ?? location.timeZone;
+  const timeZone = location.timeZone;
 
   /* ----------------------------------------------------------- engine */
 
@@ -94,7 +104,7 @@ export function SolarVision() {
         labels: { sun: sunLabel.current ?? undefined, moon: moonLabel.current ?? undefined, you: youLabel.current ?? undefined },
         reducedMotion: window.matchMedia("(prefers-reduced-motion: reduce)").matches,
         clock,
-        fast: () => sim.current.speed > 1,
+        fast: () => Math.abs(sim.current.speed) > 1,
         insets: () => (window.innerWidth > 860
           ? { top: 130, right: 390, bottom: 110, left: 16 }
           : { top: 170, right: 16, bottom: 210, left: 16 }),
@@ -118,12 +128,11 @@ export function SolarVision() {
       engineRef.current?.dispose();
       engineRef.current = null;
     };
-    // The engine is built once; place, weather and toggles are pushed to it below.
+    // The engine is built once; the place and the toggles are pushed to it below.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [clock]);
 
   useEffect(() => { engineRef.current?.setPlace(place); }, [place, status]);
-  useEffect(() => { engineRef.current?.setWeather(wx?.cloudCover ?? 0, wx?.visibilityKm ?? null); }, [wx, status]);
   useEffect(() => { engineRef.current?.setMode(mode); }, [mode, status]);
   useEffect(() => { engineRef.current?.setConstellations(constellations); }, [constellations, status]);
   useEffect(() => { engineRef.current?.setTrueScale(trueScale); }, [trueScale, status]);
@@ -138,7 +147,15 @@ export function SolarVision() {
     engineRef.current?.lookAt(s.moon.altitude > 3 ? "moon" : s.sun.altitude > 3 ? "sun" : place.lat >= 0 ? "south" : "north");
   }, [status, clock, place]);
 
-  /* ----------------------------------------------------------- location and weather */
+  // The data panel sits just above the time bar, whose height changes with the screen and its wrapping controls.
+  const timeBarRef = useCallback((el: HTMLElement | null) => {
+    if (!el) return;
+    const ro = new ResizeObserver(() => rootRef.current?.style.setProperty("--sv-time-h", `${el.offsetHeight}px`));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  /* ----------------------------------------------------------- location */
 
   const locateMe = useCallback(async () => {
     setLocating(true);
@@ -165,28 +182,41 @@ export function SolarVision() {
     return () => { alive = false; };
   }, [locateMe]);
 
-  useEffect(() => {
-    let alive = true;
-    const load = () => fetchWeather(location.lat, location.lon).then((w) => { if (alive && w) setWx(w); });
-    void load();
-    const id = window.setInterval(load, 15 * 60_000);
-    return () => { alive = false; window.clearInterval(id); };
-  }, [location.lat, location.lon]);
+  // OpenStreetMap's search runs when the visitor submits (its policy rules out search-as-you-type).
+  const search = async () => {
+    if (query.trim().length < 2 || searching) return;
+    setSearching(true);
+    setLocError(null);
+    try {
+      setResults(await searchPlaces(query));
+    } catch {
+      setResults(null);
+      setLocError("Place search is not reachable right now.");
+    } finally {
+      setSearching(false);
+    }
+  };
 
-  useEffect(() => {
-    if (query.trim().length < 2) return;
-    const id = window.setTimeout(() => {
-      searchPlaces(query).then(setResults).catch(() => setResults([]));
-    }, 300);
-    return () => window.clearTimeout(id);
-  }, [query]);
+  const choosePlace = async (r: PlaceResult) => {
+    setPlaceOpen(false);
+    setQuery("");
+    setResults(null);
+    setLocation({ lat: r.lat, lon: r.lon, height: r.height, name: r.name, source: "search" });
+    const tz = await timeZoneAt(r.lat, r.lon);
+    setLocation((l) => (l.lat === r.lat && l.lon === r.lon ? { ...l, timeZone: tz } : l));
+  };
 
   /* ----------------------------------------------------------- the clock and the numbers */
 
-  const refresh = useCallback(() => setTick({ sim: clock(), real: new Date().getTime() }), [clock]);
+  const refresh = useCallback(() => {
+    const t = clock();
+    setTick({ sim: t, real: new Date().getTime() });
+    // Running off either end of the timeline re-centres it, so the slider always has room both ways.
+    setCenter((c) => (c !== null && Math.abs(t.getTime() - c) > SCRUB_MS ? t.getTime() : c));
+  }, [clock]);
   useEffect(() => {
     const first = requestAnimationFrame(refresh);
-    const id = window.setInterval(refresh, speed > 1 ? 250 : 1000);
+    const id = window.setInterval(refresh, Math.abs(speed) > 1 ? 200 : 1000);
     return () => { cancelAnimationFrame(first); window.clearInterval(id); };
   }, [refresh, speed]);
 
@@ -200,15 +230,40 @@ export function SolarVision() {
   );
   const offsetFromNow = tick ? tick.sim.getTime() - tick.real : 0;
   const live = speed === 1 && Math.abs(offsetFromNow) < LIVE_TOLERANCE_MS;
-  const shownResults = query.trim().length < 2 ? [] : results;
+  const sliderMid = center ?? tick?.real ?? 0;
+  const sliderMinutes = tick ? Math.round(Math.max(-SCRUB_MS, Math.min(SCRUB_MS, tick.sim.getTime() - sliderMid)) / 60_000) : 0;
+  const rateLabel = RATES.find((r) => r.value === rate)?.label ?? "";
 
-  const chooseSpeed = (value: number) => {
-    retime(sim, clock().getTime(), value);
-    setSpeed(value);
+  /** Keep the current moment, change how time runs. */
+  const run = (nextSpeed: number) => {
+    const at = clock().getTime();
+    retime(sim, at, nextSpeed);
+    setSpeed(nextSpeed);
+    setCenter((c) => c ?? at);
     refresh();
   };
-  const backToNow = () => { retime(sim, "now", 1); setSpeed(1); refresh(); };
-  const scrubTo = (minutes: number) => { retime(sim, fromNow(minutes), sim.current.speed); refresh(); };
+  const togglePause = () => run(speed === 0 ? 1 : 0);
+  const chooseRate = (value: number) => {
+    setRate(value);
+    // Already fast-forwarding or rewinding: switch to the new rate in the same direction.
+    if (Math.abs(speed) > 1) run(Math.sign(speed) * value);
+  };
+  const backToNow = () => { retime(sim, "now", 1); setSpeed(1); setCenter(null); refresh(); };
+  const scrubTo = (minutes: number) => {
+    const mid = center ?? Date.now();
+    retime(sim, mid + minutes * 60_000, sim.current.speed);
+    setCenter(mid);
+    refresh();
+  };
+  /** Jump to a date and time typed in the place's own time zone, and hold there. */
+  const goTo = (value: string) => {
+    const at = fromWallTime(value, timeZone);
+    if (!at) return;
+    retime(sim, at.getTime(), 0);
+    setSpeed(0);
+    setCenter(at.getTime());
+    refresh();
+  };
 
   const fmtTime = useCallback((d: Date | null, withDate = false) => {
     if (!d) return "—";
@@ -222,8 +277,7 @@ export function SolarVision() {
     ...(timeZone ? { timeZone, timeZoneName: "short" } : { timeZoneName: "short" }),
   }), [timeZone]);
 
-  const cover = wx?.cloudCover ?? 0;
-  const sunNow = snap ? snap.sun.clearSkyIrradiance * cloudTransmission(cover) : 0;
+  const sunNow = snap ? snap.sun.clearSkyIrradiance : 0;
   const moonUp = (snap?.moon.altitude ?? -1) > 0;
   const sunUp = (snap?.sun.altitude ?? -1) > -0.83;
   const dayLength = events?.sunrise && events.sunset ? (events.sunset.getTime() - events.sunrise.getTime()) / 3_600_000 : null;
@@ -241,7 +295,7 @@ export function SolarVision() {
   /* ----------------------------------------------------------- view */
 
   return (
-    <div className={`sv sv-${mode}`} data-status={status}>
+    <div ref={rootRef} className={`sv sv-${mode}`} data-status={status}>
       <canvas ref={canvasRef} className="sv-canvas" aria-label={mode === "sky"
         ? `Live 3D sky over ${location.name}. Drag to look around, scroll or pinch to zoom.`
         : "Live 3D view of the Earth, the Moon and the Sun from space. Drag to orbit, scroll or pinch to zoom."} />
@@ -288,28 +342,26 @@ export function SolarVision() {
           <button className="sv-btn sv-btn-primary" onClick={() => void locateMe()} disabled={locating}>
             {locating ? "Finding you…" : "Use my location"}
           </button>
-          <p className="sv-note">Your location stays in this browser. Only rounded coordinates are sent to the weather and place-name services.</p>
-          <label className="sv-field">
-            <span>Or search a city</span>
-            <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="e.g. Varanasi, London, Sydney" autoComplete="off" />
-          </label>
-          {shownResults.length > 0 && (
+          <p className="sv-note">Your location stays in this browser. Only rounded coordinates are sent to the place-name service.</p>
+          <form className="sv-search" onSubmit={(e) => { e.preventDefault(); void search(); }}>
+            <label className="sv-field">
+              <span>Or search a city</span>
+              <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="e.g. Varanasi, London, Sydney" autoComplete="off" enterKeyHint="search" />
+            </label>
+            <button type="submit" className="sv-chip" disabled={searching || query.trim().length < 2}>{searching ? "Searching…" : "Search"}</button>
+          </form>
+          {results && (results.length > 0 ? (
             <ul className="sv-results">
-              {shownResults.map((r) => (
+              {results.map((r) => (
                 <li key={`${r.lat},${r.lon}`}>
-                  <button onClick={() => {
-                    setLocation({ lat: r.lat, lon: r.lon, height: r.height, name: r.name, source: "search", timeZone: r.timeZone });
-                    setWx(null);
-                    setQuery("");
-                    setResults([]);
-                    setPlaceOpen(false);
-                  }}>
+                  <button onClick={() => void choosePlace(r)}>
                     <b>{r.name}</b><small>{r.detail}</small>
                   </button>
                 </li>
               ))}
             </ul>
-          )}
+          ) : <p className="sv-note">No places found. Try a city name.</p>)}
+          <p className="sv-note">Search © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap contributors</a></p>
           {locError && <p className="sv-error" role="alert">{locError}</p>}
         </div>
       )}
@@ -379,8 +431,8 @@ export function SolarVision() {
           <dl className="sv-stats">
             <div><dt>Direction</dt><dd>{compassPoint(snap.sun.azimuth)} · {fmtDeg(snap.sun.azimuth)}</dd></div>
             <div><dt>Height</dt><dd>{fmtDeg(snap.sun.altitude)}</dd></div>
-            <div><dt>Sunlight here</dt><dd>{sunNow > 0 ? `≈ ${fmtNumber(sunNow)} W/m²` : "none"}</dd></div>
-            <div><dt>Daylight</dt><dd>{sunNow > 0 ? `≈ ${fmtNumber(sunNow * 110, 0)} lux` : "—"}</dd></div>
+            <div><dt>Sunlight (clear sky)</dt><dd>{sunNow > 0 ? `≈ ${fmtNumber(sunNow)} W/m²` : "none"}</dd></div>
+            <div><dt>Daylight (clear sky)</dt><dd>{sunNow > 0 ? `≈ ${fmtNumber(sunNow * 110, 0)} lux` : "—"}</dd></div>
             <div><dt>Brightness</dt><dd>mag {snap.sun.magnitude.toFixed(2)}</dd></div>
             <div><dt>Distance</dt><dd>{fmtNumber(snap.sun.distanceKm / 1e6, 2)} million km</dd></div>
             <div><dt>Sunrise</dt><dd>{fmtTime(events.sunrise)}</dd></div>
@@ -391,29 +443,42 @@ export function SolarVision() {
         </section>
 
         <section className="sv-card">
-          <h2 className="sv-small-head">Sky here now</h2>
+          <h2 className="sv-small-head">Your place</h2>
           <dl className="sv-stats">
-            <div><dt>Cloud cover</dt><dd>{wx ? `${Math.round(cover * 100)}%` : "…"}</dd></div>
-            <div><dt>Visibility</dt><dd>{wx?.visibilityKm != null ? `${fmtNumber(wx.visibilityKm, 1)} km` : "…"}</dd></div>
-            <div><dt>Temperature</dt><dd>{wx?.temperatureC != null ? `${wx.temperatureC.toFixed(0)}°C` : "…"}</dd></div>
             <div><dt>Time zone</dt><dd>{timeZone ?? "this device's"}</dd></div>
+            <div><dt>Latitude, longitude</dt><dd>{location.lat.toFixed(3)}, {location.lon.toFixed(3)}</dd></div>
           </dl>
+          <p className="sv-note">The sky is shown clear; sunlight figures are clear-sky estimates.</p>
           <h2 className="sv-small-head">Next Moon phases</h2>
           <ul className="sv-phases">
             {events.nextPhases.map((p) => <li key={p.time.toISOString()}><span>{QUARTER_NAMES[p.kind]}</span><b>{fmtTime(p.time, true)}</b></li>)}
           </ul>
           <p className="sv-note">
-            Positions: Astronomy Engine (agrees with NASA JPL to about an arcminute), computed live in your browser. Weather:
-            Open-Meteo. Earth: NASA GIBS (VIIRS) and textures by Solar System Scope (CC BY 4.0). Moon: NASA LRO
-            colour and elevation. Stars: d3-celestial (Hipparcos). Place names: BigDataCloud.
+            Positions: Astronomy Engine (agrees with NASA JPL to about an arcminute), computed live in your browser. Earth: NASA GIBS (VIIRS) and textures by Solar System Scope (CC BY 4.0). Moon: NASA LRO
+            colour and elevation. Stars: d3-celestial (Hipparcos). Place names: BigDataCloud, OpenStreetMap.
           </p>
         </section>
       </aside>
 
-      <footer className="sv-time" aria-label="Time">
+      <footer ref={timeBarRef} className="sv-time" aria-label="Time">
         <div className="sv-clock">
-          <span className={`sv-live ${live ? "on" : ""}`}>{live ? "Live" : speed > 1 ? "Fast" : "Shifted"}</span>
+          <span className={`sv-live ${live ? "on" : ""}`} aria-live="polite">
+            {live ? "Live" : speed === 0 ? "Paused" : speed < 0 ? `Rewind · ${rateLabel}` : speed > 1 ? `Fast · ${rateLabel}` : "Running · shifted"}
+          </span>
           <time dateTime={now.toISOString()}>{fmtDateTime.format(now)}</time>
+          <label className="sv-pick">
+            <span>Go to date &amp; time</span>
+            <input
+              type="datetime-local"
+              step={60}
+              min={PICK_MIN}
+              max={PICK_MAX}
+              value={pickDraft ?? toWallTime(now, timeZone)}
+              onFocus={() => setPickDraft(toWallTime(now, timeZone))}
+              onBlur={() => setPickDraft(null)}
+              onChange={(e) => { setPickDraft(e.target.value); goTo(e.target.value); }}
+            />
+          </label>
         </div>
         <input
           className="sv-scrub"
@@ -421,17 +486,22 @@ export function SolarVision() {
           min={-SCRUB_HOURS * 60}
           max={SCRUB_HOURS * 60}
           step={5}
-          value={Math.round(Math.max(-SCRUB_HOURS * 60, Math.min(SCRUB_HOURS * 60, offsetFromNow / 60_000)))}
+          value={sliderMinutes}
           onChange={(e) => scrubTo(Number(e.target.value))}
-          aria-label="Shift time, up to two days either way"
+          aria-label="Move through time, up to a day either way"
         />
-        <div className="sv-speeds" role="group" aria-label="Time speed">
-          {SPEEDS.map((s) => (
-            <button key={s.value} className="sv-chip" aria-pressed={speed === s.value} title={s.title} onClick={() => (s.value === 1 ? backToNow() : chooseSpeed(s.value))}>
-              {s.label}
-            </button>
-          ))}
-          {!live && <button className="sv-chip sv-now" onClick={backToNow}>Back to now</button>}
+        <div className="sv-speeds" role="group" aria-label="Time controls">
+          <button className="sv-chip sv-transport" aria-pressed={speed < 0} onClick={() => run(-rate)} aria-label={`Rewind at ${rateLabel}`} title={`Rewind at ${rateLabel}`}>◀◀</button>
+          <button className="sv-chip sv-transport sv-play" onClick={togglePause} aria-label={speed === 0 ? "Play in real time" : "Pause"} title={speed === 0 ? "Play in real time" : "Pause"}>
+            {speed === 0 ? "▶" : "❚❚"}
+          </button>
+          <button className="sv-chip sv-transport" aria-pressed={speed > 1} onClick={() => run(rate)} aria-label={`Fast forward at ${rateLabel}`} title={`Fast forward at ${rateLabel}`}>▶▶</button>
+          <span className="sv-rates" role="group" aria-label="Rewind and fast-forward speed">
+            {RATES.map((r) => (
+              <button key={r.value} className="sv-chip" aria-pressed={rate === r.value} title={r.title} onClick={() => chooseRate(r.value)}>{r.label}</button>
+            ))}
+          </span>
+          <button className={`sv-chip ${live ? "" : "sv-now"}`} aria-pressed={live} onClick={backToNow}>{live ? "Live" : "Back to now"}</button>
         </div>
       </footer>
       </>)}

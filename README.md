@@ -20,7 +20,7 @@ https://finance.ayudhas.com.
 - **Solar Vision** (`/solar-vision/`, linked from the menu): the real Sun, Moon and Earth for the visitor's place
   and moment, in two live 3D views on one canvas (`src/components/solar/`):
   - *Rooftop sky*: Preetham daylight scattering (three.js `Sky`) lit by the true Sun, with added twilight, airglow
-    and moonlit sky; real cloud cover and haze from Open-Meteo; 2,851 naked-eye stars and 89 constellation figures
+    and moonlit sky, drawn as a clear sky; 2,851 naked-eye stars and 89 constellation figures
     turned for the place and time; the Moon at its true topocentric position, size, phase, tilt and libration,
     shaded with NASA LRO colour and relief (Lommel–Seeliger regolith reflectance). Drag to look, scroll or pinch to
     zoom, "Point my phone" on phones uses the compass and gyroscope.
@@ -28,13 +28,18 @@ https://finance.ayudhas.com.
     city lights on the night side, the Moon at its true direction (distance shortened, or true with a toggle), the
     Sun, and the visitor's place with lines to the Moon and the Sun.
   - Live numbers: Moon phase, % lit, age, direction and height, magnitude, moonlight (lux), distance, size,
-    rise and set; Sun direction and height, estimated sunlight (W/m² and lux, clear-sky model × cloud cover),
-    sunrise, sunset, solar noon, day length; the next four Moon phases. Time runs live, scrubs ±2 days, or fast-
-    forwards at 10 min/s, 1 h/s or 1 day/s.
+    rise and set; Sun direction and height, estimated clear-sky sunlight (W/m² and lux),
+    sunrise, sunset, solar noon, day length; the next four Moon phases.
+  - Time: live by default; pause, play in real time, rewind ◀◀ or fast-forward ▶▶ at 10 min/s, 1 h/s or 1 day/s;
+    a ±24 h timeline slider around wherever you are; and a date-and-time picker (1900–2100) in the chosen place's
+    own time zone, which jumps there and holds.
   - All positions are computed in the browser with Astronomy Engine (no server, no API key);
-    `src/__tests__/astro.test.ts` checks them against USNO almanac times. Every online service is free and keyless:
-    browser geolocation (asks permission), BigDataCloud reverse geocoding, Open-Meteo weather and place search, NASA
-    GIBS imagery. Each fails soft.
+    `src/__tests__/astro.test.ts` checks them against USNO almanac times. Every online service is free, keyless and
+    allows commercial use: browser geolocation (asks permission), BigDataCloud client-side reverse geocoding (only
+    for the visitor's own device location, as its terms require), OpenStreetMap Nominatim place search (on submit,
+    credited on the page) and NASA GIBS imagery. Searched places get their time zone from an offline map
+    (`@photostructure/tz-lookup`, CC0), so no call is made for it. Each fails soft. There is no live weather: the
+    free weather APIs we found either forbid commercial use or cannot identify a browser app as required.
   - Assets in `public/solar/`: Earth day, night, clouds, normal and specular maps and the Sun by Solar System Scope
     (CC BY 4.0, credited on the page); Moon colour and elevation from NASA's CGI Moon Kit (LRO, public domain);
     star and constellation data from d3-celestial (BSD-3-Clause).

@@ -30,7 +30,7 @@
 
 /* ---------- place panel ---------- */
 .sv-sheet { position: absolute; z-index: 6; border-radius: 18px; padding: 1rem; }
-.sv-place-panel { top: calc(max(12px, env(safe-area-inset-top)) + 64px); right: 12px; width: min(360px, calc(100% - 24px)); display: grid; gap: 0.7rem; }
+.sv-place-panel { background: #0a0d24; top: calc(max(12px, env(safe-area-inset-top)) + 64px); right: 12px; width: min(360px, calc(100% - 24px)); display: grid; gap: 0.7rem; }
 .sv-field { display: grid; gap: 0.35rem; font-size: 0.85rem; color: var(--muted); }
 .sv-field input { width: 100%; padding: 0.7rem 0.85rem; border-radius: 12px; border: 1px solid rgb(255 255 255 / 0.2); background: rgb(0 0 0 / 0.35); color: var(--text); }
 .sv-field input:focus { outline: none; border-color: var(--cyan); box-shadow: 0 0 0 3px rgb(63 220 236 / 0.25); }
@@ -76,7 +76,7 @@
 
 /* ---------- data panel ---------- */
 .sv-panel {
-  position: absolute; z-index: 4; right: 12px; top: calc(max(12px, env(safe-area-inset-top)) + 70px); bottom: 128px; width: 352px;
+  position: absolute; z-index: 4; right: 12px; top: calc(max(12px, env(safe-area-inset-top)) + 70px); bottom: calc(max(12px, env(safe-area-inset-bottom)) + var(--sv-time-h, 100px) + 10px); width: 352px;
   border-radius: 20px; padding: 0.8rem; overflow: auto; display: grid; gap: 0.7rem; align-content: start; overscroll-behavior: contain;
   scrollbar-width: thin;
 }
@@ -110,6 +110,12 @@
 .sv-scrub { width: 100%; accent-color: var(--cyan); }
 .sv-speeds { display: flex; gap: 0.35rem; flex-wrap: wrap; justify-content: end; }
 .sv-now { border-color: var(--cyan); }
+.sv-transport { min-width: 40px; padding: 0 0.6rem; font-size: 0.78rem; letter-spacing: -0.08em; }
+.sv-play { min-width: 44px; background: linear-gradient(100deg, var(--blue), var(--violet)); border-color: transparent; }
+.sv-rates { display: inline-flex; gap: 0.3rem; padding-left: 0.35rem; margin-left: 0.15rem; border-left: 1px solid rgb(255 255 255 / 0.14); }
+.sv-pick { display: flex; align-items: center; gap: 0.4rem; font-size: 0.7rem; color: var(--faint); }
+.sv-pick input { font: inherit; font-size: 0.78rem; color: var(--text); background: rgb(0 0 0 / 0.35); border: 1px solid rgb(255 255 255 / 0.18); border-radius: 8px; padding: 0.2rem 0.4rem; color-scheme: dark; }
+.sv-pick input:focus { outline: none; border-color: var(--cyan); box-shadow: 0 0 0 3px rgb(63 220 236 / 0.25); }
 
 /* ---------- loading ---------- */
 .sv-loading { position: absolute; inset: 0; z-index: 2; display: grid; place-content: center; justify-items: center; gap: 1rem; text-align: center; padding: 2rem; background: radial-gradient(circle at 50% 45%, #10173a, #02030a 70%); color: var(--muted); }
@@ -129,13 +135,24 @@
   .sv-heading { display: none; }
   .sv-place-panel { top: calc(max(12px, env(safe-area-inset-top)) + 112px); }
   /* The data panel becomes a sheet above the time bar: one line closed, most of the screen open. */
-  .sv-panel { left: 12px; right: 12px; width: auto; top: auto; bottom: calc(max(12px, env(safe-area-inset-bottom)) + 124px); max-height: 52px; overflow: hidden; padding: 0; transition: max-height 0.45s var(--ease-out); }
+  .sv-panel { left: 12px; right: 12px; width: auto; top: auto; bottom: calc(max(12px, env(safe-area-inset-bottom)) + var(--sv-time-h, 160px) + 10px); max-height: 52px; overflow: hidden; padding: 0; transition: max-height 0.45s var(--ease-out); }
   .sv-panel.open { max-height: min(62vh, 640px); overflow: auto; padding: 0 0.7rem 0.7rem; }
   .sv-panel-toggle { display: flex; align-items: center; gap: 0.6rem; width: 100%; min-height: 50px; padding: 0 0.9rem; border: 0; background: none; color: var(--text); font-weight: 700; font-size: 0.85rem; text-align: left; cursor: pointer; position: sticky; top: 0; z-index: 1; }
   .sv-panel.open .sv-panel-toggle { background: rgb(8 11 30 / 0.9); margin-inline: -0.7rem; width: calc(100% + 1.4rem); }
   .sv-panel-toggle span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .sv-time { grid-template-columns: minmax(0, 1fr); gap: 0.45rem; padding: 0.55rem 0.7rem; }
-  .sv-clock { grid-auto-flow: column; justify-content: start; align-items: center; gap: 0.6rem; }
+  .sv-clock { grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 0.35rem 0.6rem; }
+  .sv-pick { grid-column: 1 / -1; }
+  .sv-pick input { flex: 1; min-width: 0; }
   .sv-clock time { font-size: 0.8rem; }
   .sv-speeds { justify-content: start; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
 }
+
+/* City search: a field and a button (OpenStreetMap search runs on submit, not as you type). */
+.sv-search { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 0.5rem; align-items: end; }
+.sv-search .sv-chip { min-height: 44px; }
+.sv-search .sv-chip:disabled { opacity: 0.5; cursor: default; }
+.sv-note a { color: var(--muted); }
+/* The chosen ◀◀/▶▶ speed is a setting, not a running mode: outlined, not filled. */
+.sv-rates .sv-chip[aria-pressed="true"] { background: rgb(8 11 30 / 0.55); border-color: var(--cyan); color: var(--cyan); }
+@media (max-width: 860px) { .sv-panel.open { background: rgb(8 11 30 / 0.94); } }

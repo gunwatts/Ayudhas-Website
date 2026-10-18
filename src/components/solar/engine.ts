@@ -10,8 +10,8 @@ import { cloudTransmission, type Basis, type Place, snapshot, type Snapshot, typ
 
 /**
  * Solar Vision's renderer: two real-time scenes on one WebGL canvas.
- * - "sky": the view from a rooftop at the visitor's place. Preetham daylight scattering lit by the true Sun, real
- *   cloud cover, the real star field and constellations turned for that place and moment, and the Moon at its true
+ * - "sky": the view from a rooftop at the visitor's place. Preetham daylight scattering lit by the true Sun (drawn
+ *   clear), the real star field and constellations turned for that place and moment, and the Moon at its true
  *   topocentric position, size, phase, tilt and libration, shaded like lunar regolith.
  * - "space": the Earth turned to the true sidereal angle with its tilt, sunlit side, city lights on the night side
  *   and yesterday's real clouds from NASA GIBS; the Moon at its true geocentric direction; the Sun; and the visitor's
@@ -40,7 +40,6 @@ export type EngineOptions = {
 export type SolarEngine = {
   setMode: (mode: ViewMode) => void;
   setPlace: (place: Place) => void;
-  setWeather: (cloudCover: number, visibilityKm: number | null) => void;
   setConstellations: (on: boolean) => void;
   setTrueScale: (on: boolean) => void;
   /** Resolves true once the image is on the globe. */
@@ -343,8 +342,10 @@ export async function createSolarEngine(o: EngineOptions): Promise<SolarEngine> 
 
   let mode: ViewMode = "sky";
   let place: Place = { lat: 0, lon: 0, height: 0 };
-  let cloudCover = 0;
-  let visibilityKm: number | null = null;
+  // The sky is drawn clear: no live weather service is used (see live.ts). The cloud and haze terms stay in the
+  // shading so a future, commercially licensed weather source can drive them again.
+  const cloudCover = 0;
+  const visibilityKm: number | null = null;
   let trueScale = false;
   let reduce = o.reducedMotion;
   let snap: Snapshot = snapshot(o.clock(), place);
@@ -1009,7 +1010,6 @@ export async function createSolarEngine(o: EngineOptions): Promise<SolarEngine> 
       snap = snapshot(o.clock(), place);
       orbitAt = -Infinity;
     },
-    setWeather(cover, vis) { cloudCover = cover; visibilityKm = vis; },
     setConstellations(on) { constellations = on; },
     setTrueScale(on) { trueScale = on; orbitAt = -Infinity; },
     setSatelliteImage(url) {

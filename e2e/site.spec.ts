@@ -185,3 +185,44 @@ test("Solar Vision opens from the menu and shows the live Sun and Moon for a pla
   await expect(page.getByRole("tab", { name: "From space" })).toHaveAttribute("aria-selected", "true");
   await ctx.close();
 });
+
+test("Solar Vision finds a city by name and shows its local time", async ({ page }) => {
+  await page.route("https://nominatim.openstreetmap.org/**", (route) => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify([{ lat: "51.5074", lon: "-0.1278", name: "London", display_name: "London, England, United Kingdom",
+      address: { city: "London", state: "England", country: "United Kingdom" } }]),
+  }));
+  await page.goto("/solar-vision/");
+  await page.locator(".sv-place").click();
+  const dialog = page.getByRole("dialog", { name: "Choose a place" });
+  await dialog.getByLabel("Or search a city").fill("London");
+  await dialog.getByRole("button", { name: "Search" }).click();
+  await dialog.getByRole("button", { name: /London/ }).click();
+  await expect(page.locator(".sv-place-name")).toHaveText("London");
+  await expect(page.getByRole("complementary", { name: "Live data" })).toContainText("Europe/London", { timeout: 20_000 });
+  await expect(page.locator(".sv-clock time")).toContainText(/GMT|BST/);
+});
+
+test("Solar Vision can pause, rewind and jump to a chosen date and time", async ({ browser, baseURL }) => {
+  const ctx = await browser.newContext({ baseURL, timezoneId: "Asia/Kolkata" });
+  const page = await ctx.newPage();
+  page.on("pageerror", (e) => { throw e; });
+  await page.goto("/solar-vision/");
+  const status = page.locator(".sv-live");
+  const clock = page.locator(".sv-time time");
+  await page.getByRole("button", { name: "Pause" }).click();
+  await expect(status).toHaveText(/Paused/i);
+  const held = await clock.innerText();
+  await page.waitForTimeout(1500);
+  await expect(clock).toHaveText(held);
+  await page.getByRole("button", { name: /^Rewind/ }).click();
+  await expect(status).toHaveText(/Rewind/i);
+  await page.getByLabel("Go to date & time").fill("2027-01-01T21:30");
+  await expect(status).toHaveText(/Paused/i);
+  await expect(clock).toContainText("1 Jan, 2027");
+  await expect(clock).toContainText("09:30");
+  await page.getByRole("button", { name: "Back to now" }).click();
+  await expect(status).toHaveText(/Live/i);
+  await ctx.close();
+});
