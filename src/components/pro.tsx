@@ -115,7 +115,7 @@ export function Pro() {
   return (
     <section id="pro" className="scene pro" aria-labelledby="pro-title" data-chapter>
       <div className="wrap">
-        <div className="scene-head reveal">
+        <div className="scene-head reveal" data-depth="0.22">
           <span className="label">Android app</span>
           <SplitHeading id="pro-title" parts={[{ text: "Ayudhas Pro", className: "grad", after: ":" }, " tasks, time and Panchang in your pocket."]} />
           <p className="lede">{PRO.promise} The first app in the Ayudhas collection, formerly called {PRO.formerly}.</p>
@@ -170,9 +170,11 @@ export function Pro() {
         </div>
 
         <figure className="pro-feature glass reveal">
-          {/* eslint-disable-next-line @next/next/no-img-element -- static export; image is pre-optimised WebP */}
-          <img src="/images/ayudhas-pro-feature.webp" width={1024} height={500} loading="lazy" decoding="async"
-            alt="Ayudhas Pro feature graphic: Today's tasks with a Dedication Score of 86, the Time Tracker, and a reminder notification with Mark done and Postpone." />
+          <div className="pro-feature-media">
+            {/* eslint-disable-next-line @next/next/no-img-element -- static export; image is pre-optimised WebP */}
+            <img src="/images/ayudhas-pro-feature.webp" width={1024} height={500} loading="lazy" decoding="async"
+              alt="Ayudhas Pro feature graphic: Today's tasks with a Dedication Score of 86, the Time Tracker, and a reminder notification with Mark done and Postpone." />
+          </div>
           <figcaption className="caption">From the Ayudhas Pro store listing.</figcaption>
         </figure>
       </div>

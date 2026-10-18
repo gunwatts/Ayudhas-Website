@@ -27,6 +27,9 @@ export function Footer() {
           <a href="#contact">Contact form</a>
         </div>
       </div>
+      <div className="footer-mark" aria-hidden="true">
+        {[..."Ayudhas"].map((ch, i) => <span key={i}>{ch}</span>)}
+      </div>
       <div className="wrap footer-base">
         <p>© 2026 Ayudhas. All rights reserved.</p>
         <p>ayudhas.com · finance.ayudhas.com</p>

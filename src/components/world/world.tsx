@@ -25,8 +25,8 @@ const prefersLight = () => Boolean(navigator.connection?.saveData) || (navigator
 function openContext(canvas: HTMLCanvasElement, lowPower: boolean): WebGL2RenderingContext | null {
   try {
     const gl = canvas.getContext("webgl2", {
-      alpha: true, premultipliedAlpha: true, depth: true, stencil: false, powerPreference: "high-performance",
-      // MSAA only where pixels are coarse; high-density screens are sharp without it.
+      alpha: false, depth: true, stencil: false, powerPreference: "high-performance",
+      // MSAA only where pixels are coarse (used when the lens is off; the lens has its own).
       antialias: !lowPower && (window.devicePixelRatio || 1) < 1.5,
       failIfMajorPerformanceCaveat: true,
     });

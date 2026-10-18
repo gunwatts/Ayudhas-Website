@@ -44,7 +44,7 @@ export function Universe() {
   return (
     <section id="universe" className="scene universe" aria-labelledby="universe-title" data-chapter>
       <div className="wrap">
-        <div className="scene-head reveal">
+        <div className="scene-head reveal" data-depth="0.22">
           <span className="label">The Ayudhas universe</span>
           <SplitHeading id="universe-title" parts={["Every tool is a place you can visit."]} />
           <p className="lede">Choose a destination. Live tools can be used today; the rest are marked as what they are.</p>

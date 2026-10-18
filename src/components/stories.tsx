@@ -28,7 +28,7 @@ export function Stories() {
   return (
     <section id="stories" className="scene stories" aria-labelledby="stories-title" data-chapter>
       <div className="wrap">
-        <div className="scene-head reveal">
+        <div className="scene-head reveal" data-depth="0.22">
           <span className="label">The philosophy, in practice</span>
           <SplitHeading id="stories-title" parts={["What a good tool feels like."]} />
           <p className="lede">Four everyday situations and the tool that helps. These are illustrations, not customer stories.</p>

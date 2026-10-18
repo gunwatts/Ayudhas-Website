@@ -149,3 +149,12 @@ test("SEO files and metadata point at ayudhas.com", async ({ page, request }) =>
   const legacy = await (await request.get("/login/")).text();
   expect(legacy).toContain('content="noindex');
 });
+
+test("in-page links glide to their section, update the address and move focus there", async ({ page, isMobile }) => {
+  test.skip(isMobile, "the desktop navigation holds the links");
+  await page.goto("/");
+  await page.getByRole("navigation", { name: "Sections" }).getByRole("link", { name: "Stories" }).click();
+  await expect(page).toHaveURL(/#stories$/);
+  await expect(page.locator("#stories")).toBeFocused();
+  await expect(page.getByRole("heading", { name: "What a good tool feels like." })).toBeInViewport();
+});

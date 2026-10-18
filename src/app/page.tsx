@@ -1,5 +1,6 @@
 import { ChapterRail } from "@/components/chapter-rail";
 import { Contact } from "@/components/contact";
+import { Cursor } from "@/components/cursor";
 import { Footer } from "@/components/footer";
 import { Future } from "@/components/future";
 import { HeroTools } from "@/components/hero-tools";
@@ -8,6 +9,7 @@ import { MotionDirector } from "@/components/motion-director";
 import { Nav } from "@/components/nav";
 import { OrbitWorld } from "@/components/orbit-world";
 import { Pro } from "@/components/pro";
+import { ScrollDirector } from "@/components/scroll-director";
 import { Stories } from "@/components/stories";
 import { Universe } from "@/components/universe";
 import { World } from "@/components/world/world";
@@ -62,6 +64,8 @@ export default function Home() {
       <Footer />
       <ChapterRail />
       <MotionDirector />
+      <ScrollDirector />
+      <Cursor />
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
     </>
   );
