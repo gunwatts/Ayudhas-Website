@@ -185,3 +185,21 @@ test("Solar Vision opens from the menu and shows the live Sun and Moon for a pla
   await expect(page.getByRole("tab", { name: "From space" })).toHaveAttribute("aria-selected", "true");
   await ctx.close();
 });
+
+test("Solar Vision finds a city by name and shows its local time", async ({ page }) => {
+  await page.route("https://nominatim.openstreetmap.org/**", (route) => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify([{ lat: "51.5074", lon: "-0.1278", name: "London", display_name: "London, England, United Kingdom",
+      address: { city: "London", state: "England", country: "United Kingdom" } }]),
+  }));
+  await page.goto("/solar-vision/");
+  await page.locator(".sv-place").click();
+  const dialog = page.getByRole("dialog", { name: "Choose a place" });
+  await dialog.getByLabel("Or search a city").fill("London");
+  await dialog.getByRole("button", { name: "Search" }).click();
+  await dialog.getByRole("button", { name: /London/ }).click();
+  await expect(page.locator(".sv-place-name")).toHaveText("London");
+  await expect(page.getByRole("complementary", { name: "Live data" })).toContainText("Europe/London", { timeout: 20_000 });
+  await expect(page.locator(".sv-clock time")).toContainText(/GMT|BST/);
+});

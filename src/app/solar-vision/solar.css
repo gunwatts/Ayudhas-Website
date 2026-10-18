@@ -30,7 +30,7 @@
 
 /* ---------- place panel ---------- */
 .sv-sheet { position: absolute; z-index: 6; border-radius: 18px; padding: 1rem; }
-.sv-place-panel { top: calc(max(12px, env(safe-area-inset-top)) + 64px); right: 12px; width: min(360px, calc(100% - 24px)); display: grid; gap: 0.7rem; }
+.sv-place-panel { background: #0a0d24; top: calc(max(12px, env(safe-area-inset-top)) + 64px); right: 12px; width: min(360px, calc(100% - 24px)); display: grid; gap: 0.7rem; }
 .sv-field { display: grid; gap: 0.35rem; font-size: 0.85rem; color: var(--muted); }
 .sv-field input { width: 100%; padding: 0.7rem 0.85rem; border-radius: 12px; border: 1px solid rgb(255 255 255 / 0.2); background: rgb(0 0 0 / 0.35); color: var(--text); }
 .sv-field input:focus { outline: none; border-color: var(--cyan); box-shadow: 0 0 0 3px rgb(63 220 236 / 0.25); }
@@ -139,3 +139,9 @@
   .sv-clock time { font-size: 0.8rem; }
   .sv-speeds { justify-content: start; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
 }
+
+/* City search: a field and a button (OpenStreetMap search runs on submit, not as you type). */
+.sv-search { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 0.5rem; align-items: end; }
+.sv-search .sv-chip { min-height: 44px; }
+.sv-search .sv-chip:disabled { opacity: 0.5; cursor: default; }
+.sv-note a { color: var(--muted); }
