@@ -38,6 +38,22 @@ function retime(sim: RefObject<SimClock>, at: number | "now", speed: number) {
 }
 
 
+/**
+ * A callback ref that keeps a CSS variable on `root` (and an entry in `sizes`) equal to the element's height, so the
+ * other panels can sit against it whatever the screen, the font size or the wrapping of its controls.
+ */
+function useHeightVar(root: RefObject<HTMLDivElement | null>, sizes: RefObject<Record<string, number>>, name: string) {
+  return useCallback((el: HTMLElement | null) => {
+    if (!el) return;
+    const ro = new ResizeObserver(() => {
+      sizes.current[name] = el.offsetHeight;
+      root.current?.style.setProperty(`--sv-${name}-h`, `${el.offsetHeight}px`);
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [root, sizes, name]);
+}
+
 const fmtNumber = (n: number, digits = 0) => n.toLocaleString("en-IN", { maximumFractionDigits: digits, minimumFractionDigits: digits });
 const fmtDeg = (n: number) => `${n.toFixed(1)}°`;
 
@@ -53,6 +69,15 @@ export function SolarVision() {
   const youLabel = useRef<HTMLDivElement>(null);
   const headingRef = useRef<HTMLSpanElement>(null);
   const rootRef = useRef<HTMLDivElement>(null);
+  const sizes = useRef<Record<string, number>>({});
+  const headRef = useHeightVar(rootRef, sizes, "head");
+  const topRef = useHeightVar(rootRef, sizes, "top");
+  const timeBarRef = useHeightVar(rootRef, sizes, "time");
+  // Full screen: every control hidden (and the browser's own bars too, where it allows), just the sky.
+  const [immersive, setImmersive] = useState(false);
+  const immersiveRef = useRef(false);
+  const [exitIdle, setExitIdle] = useState(false);
+  const [pickOpen, setPickOpen] = useState(false);
   const engineRef = useRef<SolarEngine | null>(null);
   const reduce = useReducedMotion();
 
@@ -105,9 +130,14 @@ export function SolarVision() {
         reducedMotion: window.matchMedia("(prefers-reduced-motion: reduce)").matches,
         clock,
         fast: () => Math.abs(sim.current.speed) > 1,
-        insets: () => (window.innerWidth > 860
-          ? { top: 130, right: 390, bottom: 110, left: 16 }
-          : { top: 170, right: 16, bottom: 210, left: 16 }),
+        // Off-screen labels ride the edges of the open sky, never under a panel.
+        insets: () => {
+          const s = sizes.current;
+          if (immersiveRef.current) return { top: 24, right: 24, bottom: 24, left: 24 };
+          return window.innerWidth > 860
+            ? { top: (s.head ?? 120) + 24, right: 390, bottom: (s.time ?? 90) + 24, left: 16 }
+            : { top: (s.head ?? 110) + 24, right: 16, bottom: (s.time ?? 140) + 110, left: 16 };
+        },
         onReady: () => { if (!disposed) setStatus("ready"); },
         onHeading: (az, alt, fov) => {
           const el = headingRef.current;
@@ -147,13 +177,42 @@ export function SolarVision() {
     engineRef.current?.lookAt(s.moon.altitude > 3 ? "moon" : s.sun.altitude > 3 ? "sun" : place.lat >= 0 ? "south" : "north");
   }, [status, clock, place]);
 
-  // The data panel sits just above the time bar, whose height changes with the screen and its wrapping controls.
-  const timeBarRef = useCallback((el: HTMLElement | null) => {
-    if (!el) return;
-    const ro = new ResizeObserver(() => rootRef.current?.style.setProperty("--sv-time-h", `${el.offsetHeight}px`));
-    ro.observe(el);
-    return () => ro.disconnect();
+  /* ----------------------------------------------------------- full screen */
+
+  const enterImmersive = () => {
+    immersiveRef.current = true;
+    setImmersive(true);
+    setExitIdle(false);
+    setPlaceOpen(false);
+    setPanelOpen(false);
+    setPickOpen(false);
+    // Ask for real full screen too (Android hides its status and navigation bars). iPhones do not allow it for web
+    // pages; there the controls still hide and the sky fills the browser window.
+    const el = document.documentElement as HTMLElement & { webkitRequestFullscreen?: () => Promise<void> };
+    try {
+      if (el.requestFullscreen) void el.requestFullscreen({ navigationUI: "hide" }).catch(() => undefined);
+      else void el.webkitRequestFullscreen?.();
+    } catch { /* not allowed here: the controls are hidden anyway */ }
+  };
+  const exitImmersive = useCallback(() => {
+    immersiveRef.current = false;
+    setImmersive(false);
+    if (document.fullscreenElement) void document.exitFullscreen().catch(() => undefined);
   }, []);
+  // Leaving the browser's full screen (back gesture, Esc) brings the controls back as well.
+  useEffect(() => {
+    const onChange = () => { if (!document.fullscreenElement && immersiveRef.current) exitImmersive(); };
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape" && immersiveRef.current) exitImmersive(); };
+    document.addEventListener("fullscreenchange", onChange);
+    window.addEventListener("keydown", onKey);
+    return () => { document.removeEventListener("fullscreenchange", onChange); window.removeEventListener("keydown", onKey); };
+  }, [exitImmersive]);
+  // The way back out fades after a moment and returns with any touch.
+  useEffect(() => {
+    if (!immersive || exitIdle) return;
+    const id = window.setTimeout(() => setExitIdle(true), 2500);
+    return () => window.clearTimeout(id);
+  }, [immersive, exitIdle]);
 
   /* ----------------------------------------------------------- location */
 
@@ -295,7 +354,12 @@ export function SolarVision() {
   /* ----------------------------------------------------------- view */
 
   return (
-    <div ref={rootRef} className={`sv sv-${mode}`} data-status={status}>
+    <div
+      ref={rootRef}
+      className={`sv sv-${mode} ${immersive ? "sv-immersive" : ""}`}
+      data-status={status}
+      onPointerDown={() => { if (immersive && exitIdle) setExitIdle(false); }}
+    >
       <canvas ref={canvasRef} className="sv-canvas" aria-label={mode === "sky"
         ? `Live 3D sky over ${location.name}. Drag to look around, scroll or pinch to zoom.`
         : "Live 3D view of the Earth, the Moon and the Sun from space. Drag to orbit, scroll or pinch to zoom."} />
@@ -323,17 +387,32 @@ export function SolarVision() {
         </div>
       )}
 
-      <header className="sv-top">
+      {immersive && (
+        <button className={`sv-exit ${exitIdle ? "idle" : ""}`} onClick={exitImmersive} aria-label="Show the controls again">
+          <span aria-hidden>✕</span> Controls
+        </button>
+      )}
+
+      {/* The top stack: the bar, then the tool row under it, in normal flow, so neither can slide under the other. */}
+      <div ref={headRef} className="sv-head" inert={immersive}>
+      <header ref={topRef} className="sv-top">
         <Link href="/" className="sv-brand" aria-label="Back to Ayudhas"><Logo size={26} /><span>Ayudhas</span></Link>
         <h1 className="sv-title">Solar Vision</h1>
         <div className="sv-modes" role="tablist" aria-label="View">
-          <button role="tab" aria-selected={mode === "sky"} onClick={() => setMode("sky")}>Rooftop sky</button>
-          <button role="tab" aria-selected={mode === "space"} onClick={() => setMode("space")}>From space</button>
+          <button role="tab" aria-selected={mode === "sky"} onClick={() => setMode("sky")} aria-label="Rooftop sky">
+            <span className="sv-wide">Rooftop sky</span><span className="sv-narrow" aria-hidden>Sky</span>
+          </button>
+          <button role="tab" aria-selected={mode === "space"} onClick={() => setMode("space")} aria-label="From space">
+            <span className="sv-wide">From space</span><span className="sv-narrow" aria-hidden>Space</span>
+          </button>
         </div>
         <button className="sv-place" onClick={() => setPlaceOpen((v) => !v)} aria-expanded={placeOpen} aria-controls="sv-place-panel">
           <span className="sv-dot" data-source={location.source} aria-hidden />
           <span className="sv-place-name">{location.name}</span>
           <small>{Math.abs(location.lat).toFixed(2)}°{location.lat >= 0 ? "N" : "S"} {Math.abs(location.lon).toFixed(2)}°{location.lon >= 0 ? "E" : "W"}</small>
+        </button>
+        <button className="sv-chip sv-icon" onClick={enterImmersive} aria-label="Full screen: hide all controls" title="Full screen">
+          <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
         </button>
       </header>
 
@@ -392,9 +471,10 @@ export function SolarVision() {
           </span>
         </div>
       )}
+      </div>
 
       {snap && events && now && (<>
-      <aside className={`sv-panel ${panelOpen ? "open" : ""}`} aria-label="Live data">
+      <aside className={`sv-panel ${panelOpen ? "open" : ""}`} aria-label="Live data" inert={immersive}>
         <button className="sv-panel-toggle" onClick={() => setPanelOpen((v) => !v)} aria-expanded={panelOpen}>
           <PhaseIcon phaseAngle={snap.moon.phaseAngle} illuminated={snap.moon.illuminated} southern={southern} size={26} />
           <span>{snap.moon.phaseName} · {Math.round(snap.moon.illuminated * 100)}% · Moon {moonUp ? `${compassPoint(snap.moon.azimuth)} ${fmtDeg(snap.moon.altitude)}` : "down"}</span>
@@ -460,16 +540,18 @@ export function SolarVision() {
         </section>
       </aside>
 
-      <footer ref={timeBarRef} className="sv-time" aria-label="Time">
+      <footer ref={timeBarRef} className={`sv-time ${pickOpen ? "pick-open" : ""}`} aria-label="Time" inert={immersive}>
         <div className="sv-clock">
           <span className={`sv-live ${live ? "on" : ""}`} aria-live="polite">
             {live ? "Live" : speed === 0 ? "Paused" : speed < 0 ? `Rewind · ${rateLabel}` : speed > 1 ? `Fast · ${rateLabel}` : "Running · shifted"}
           </span>
           <time dateTime={now.toISOString()}>{fmtDateTime.format(now)}</time>
+        </div>
           <label className="sv-pick">
             <span>Go to date &amp; time</span>
             <input
               type="datetime-local"
+              aria-label="Go to date & time"
               step={60}
               min={PICK_MIN}
               max={PICK_MAX}
@@ -479,7 +561,6 @@ export function SolarVision() {
               onChange={(e) => { setPickDraft(e.target.value); goTo(e.target.value); }}
             />
           </label>
-        </div>
         <input
           className="sv-scrub"
           type="range"
@@ -501,8 +582,19 @@ export function SolarVision() {
               <button key={r.value} className="sv-chip" aria-pressed={rate === r.value} title={r.title} onClick={() => chooseRate(r.value)}>{r.label}</button>
             ))}
           </span>
-          <button className={`sv-chip ${live ? "" : "sv-now"}`} aria-pressed={live} onClick={backToNow}>{live ? "Live" : "Back to now"}</button>
+          {/* Phones: one button steps through the speeds instead of three. */}
+          <button
+            className="sv-chip sv-rate-cycle"
+            onClick={() => chooseRate(RATES[(RATES.findIndex((r) => r.value === rate) + 1) % RATES.length].value)}
+            aria-label={`Speed for rewind and fast-forward: ${rateLabel}. Tap to change.`}
+          >
+            {rateLabel}
+          </button>
+          <button className="sv-chip sv-icon sv-pick-toggle" aria-pressed={pickOpen} aria-expanded={pickOpen} onClick={() => setPickOpen((v) => !v)} aria-label="Go to a date and time" title="Go to a date and time">
+            <svg viewBox="0 0 24 24" width="17" height="17" aria-hidden><rect x="3.5" y="5" width="17" height="15" rx="2.5" fill="none" stroke="currentColor" strokeWidth="1.8" /><path d="M3.5 10h17M8 3v4M16 3v4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /></svg>
+          </button>
         </div>
+        <button className={`sv-chip sv-now-btn ${live ? "" : "sv-now"}`} aria-pressed={live} onClick={backToNow} aria-label={live ? "Live" : "Back to now"}>{live ? "Live" : "Now"}</button>
       </footer>
       </>)}
     </div>

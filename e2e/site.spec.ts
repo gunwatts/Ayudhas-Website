@@ -218,6 +218,9 @@ test("Solar Vision can pause, rewind and jump to a chosen date and time", async 
   await expect(clock).toHaveText(held);
   await page.getByRole("button", { name: /^Rewind/ }).click();
   await expect(status).toHaveText(/Rewind/i);
+  // Phones keep the date box behind a calendar button.
+  const toggle = page.getByRole("button", { name: "Go to a date and time" });
+  if (await toggle.isVisible()) await toggle.click();
   await page.getByLabel("Go to date & time").fill("2027-01-01T21:30");
   await expect(status).toHaveText(/Paused/i);
   await expect(clock).toContainText("1 Jan, 2027");
@@ -225,4 +228,17 @@ test("Solar Vision can pause, rewind and jump to a chosen date and time", async 
   await page.getByRole("button", { name: "Back to now" }).click();
   await expect(status).toHaveText(/Live/i);
   await ctx.close();
+});
+
+test("Solar Vision's full screen hides every control and brings them back", async ({ page }) => {
+  page.on("pageerror", (e) => { throw e; });
+  await page.goto("/solar-vision/");
+  const bars = page.locator(".sv-head, .sv-time");
+  await expect(bars.first()).toBeVisible();
+  await page.getByRole("button", { name: /Full screen/ }).click();
+  await expect(page.locator(".sv-head")).toBeHidden();
+  await expect(page.locator(".sv-time")).toBeHidden();
+  await page.getByRole("button", { name: "Show the controls again" }).click();
+  await expect(page.locator(".sv-head")).toBeVisible();
+  await expect(page.locator(".sv-time")).toBeVisible();
 });

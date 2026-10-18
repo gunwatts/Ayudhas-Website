@@ -33,6 +33,12 @@ https://finance.ayudhas.com.
   - Time: live by default; pause, play in real time, rewind ◀◀ or fast-forward ▶▶ at 10 min/s, 1 h/s or 1 day/s;
     a ±24 h timeline slider around wherever you are; and a date-and-time picker (1900–2100) in the chosen place's
     own time zone, which jumps there and holds.
+  - Layout: the controls stack in normal flow (top bar, then the tool row; the data sheet sits on the measured time
+    bar), so nothing can slide under anything at any screen or text size. On phones the top bar is one row and the
+    time bar three short rows (one speed button, the date box behind a calendar button).
+  - Full screen (⛶): hides every control and label and asks the browser for real full screen (Android hides its
+    status and navigation bars; iPhones do not allow it for web pages, so there the sky fills the browser window).
+    The page is edge to edge (`viewport-fit=cover`); a fading "✕ Controls" button brings everything back.
   - All positions are computed in the browser with Astronomy Engine (no server, no API key);
     `src/__tests__/astro.test.ts` checks them against USNO almanac times. Every online service is free, keyless and
     allows commercial use: browser geolocation (asks permission), BigDataCloud client-side reverse geocoding (only
