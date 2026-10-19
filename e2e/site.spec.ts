@@ -258,3 +258,41 @@ test("the ceiling view is built from Solar Vision and shows only the sky", async
   await expect(page.locator(".sv-time")).toBeHidden();
   await expect(page.locator(".sv-canvas")).toHaveCSS("filter", /sepia/);
 });
+
+test("Solar Vision in the Ayudhas Pro app uses the app's city and never the device location", async ({ browser, baseURL }) => {
+  const ctx = await browser.newContext({ baseURL });
+  const page = await ctx.newPage();
+  page.on("pageerror", (e) => { throw e; });
+  // Stand in for the app's WebView bridge, and watch for anything that could use or send a location.
+  await page.addInitScript(() => {
+    const w = window as unknown as { appMessages: string[]; geoCalls: number; ReactNativeWebView: { postMessage: (m: string) => void } };
+    w.appMessages = [];
+    w.geoCalls = 0;
+    w.ReactNativeWebView = { postMessage: (m) => { w.appMessages.push(JSON.parse(m).type); } };
+    const count = () => { w.geoCalls += 1; };
+    navigator.geolocation.getCurrentPosition = count;
+    navigator.geolocation.watchPosition = () => { count(); return 0; };
+  });
+  const lookups: string[] = [];
+  page.on("request", (r) => { if (/bigdatacloud|nominatim/.test(r.url())) lookups.push(r.url()); });
+
+  await page.goto("/solar-vision/#app&lat=51.5074&lon=-0.1278&name=London&tz=Europe%2FLondon");
+  await expect(page.locator(".sv-place-name")).toHaveText("London");
+  await expect(page.locator(".sv-clock time")).toContainText(/GMT|BST/);
+  await expect(page.getByRole("complementary", { name: "Live data" })).toContainText("never sent to a server");
+  await expect(page.getByRole("button", { name: "Ceiling" })).toHaveCount(0);
+
+  await page.getByRole("button", { name: /Choose another city/ }).click();
+  await expect(page.getByRole("dialog", { name: "Choose a place" })).toHaveCount(0);
+  await page.getByRole("button", { name: "Close Solar Vision" }).click();
+  expect(await page.evaluate(() => (window as unknown as { appMessages: string[] }).appMessages)).toEqual(["hello", "place", "close"]);
+
+  // The app changes city by changing the fragment.
+  await page.evaluate(() => { window.location.hash = "app&lat=-33.8688&lon=151.2093&name=Sydney&tz=Australia%2FSydney"; });
+  await expect(page.locator(".sv-place-name")).toHaveText("Sydney");
+  await expect(page.locator(".sv-clock time")).toContainText(/AEST|AEDT|GMT\+1[01]/);
+
+  expect(await page.evaluate(() => (window as unknown as { geoCalls: number }).geoCalls)).toBe(0);
+  expect(lookups).toEqual([]);
+  await ctx.close();
+});
