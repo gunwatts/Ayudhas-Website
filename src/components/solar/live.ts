@@ -15,7 +15,7 @@ export type Location = {
   height: number;
   name: string;
   /** How the location was found, shown to the visitor. */
-  source: "device" | "search" | "default";
+  source: "device" | "search" | "default" | "app";
   accuracyM?: number;
   /** IANA time zone, when known before the weather arrives. */
   timeZone?: string;

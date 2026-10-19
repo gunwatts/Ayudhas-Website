@@ -39,6 +39,10 @@ https://finance.ayudhas.com.
   - Full screen (⛶): hides every control and label and asks the browser for real full screen (Android hides its
     status and navigation bars; iPhones do not allow it for web pages, so there the sky fills the browser window).
     The page is edge to edge (`viewport-fit=cover`); a fading "✕ Controls" button brings everything back.
+  - App mode (`#app&lat=..&lon=..&name=..&tz=..`, `src/components/solar/app-link.ts`): how the Ayudhas Pro app opens
+    Solar Vision full screen. The city comes from the app in the link's fragment, which is never sent to the server;
+    the page never asks for the device location, never looks up place names or searches, hides the ceiling builder,
+    and hands its back and place buttons to the app (`window.ReactNativeWebView` messages `hello`, `close`, `place`).
   - Ceiling view (`?ceiling`, built from Rooftop sky → Ceiling): the sky straight overhead for projecting onto a
     ceiling, north up and east on the left as seen lying down, with constellation figures and names (English or
     Hindi), the planets and the Moon; no controls; set entirely by the link (place, rotation, mirror, field of view,

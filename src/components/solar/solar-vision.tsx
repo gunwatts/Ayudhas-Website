@@ -6,6 +6,7 @@ import { type RefObject, useCallback, useEffect, useMemo, useRef, useState, useS
 import { Logo } from "@/components/logo";
 import { useReducedMotion } from "@/lib/motion";
 
+import { type AppPlace, parseAppLink, postToApp } from "./app-link";
 import { compassPoint, dayEvents, type DayEvents, type MoonEvent, snapshot, type Snapshot, startOfLocalDay } from "./astro";
 import { type CeilingConfig, ceilingLink, dayCover, parseCeiling } from "./ceiling";
 import type { SolarEngine, Target, ViewMode } from "./engine";
@@ -101,11 +102,22 @@ export function SolarVision() {
     () => "",
   );
   const ceiling = useMemo(() => parseCeiling(urlQuery), [urlQuery]);
+  // App mode (#app&lat=...) comes from the link's fragment, which never reaches the server; the app changes the
+  // fragment when its city changes.
+  const urlHash = useSyncExternalStore(
+    (cb) => { window.addEventListener("hashchange", cb); return () => window.removeEventListener("hashchange", cb); },
+    () => window.location.hash,
+    () => "",
+  );
+  const appPlace: AppPlace | null = useMemo(() => (ceiling ? null : parseAppLink(urlHash)), [ceiling, urlHash]);
+  const inApp = appPlace !== null;
   const [paramTz, setParamTz] = useState<string | undefined>(undefined);
   // A place given in the link wins over the browser's location, so a computer with no one at it needs no prompt.
   const location: Location = useMemo(() => (ceiling?.place
     ? { lat: ceiling.place.lat, lon: ceiling.place.lon, height: 0, name: ceiling.place.name, source: "search", timeZone: ceiling.place.tz ?? paramTz }
-    : chosen), [ceiling, chosen, paramTz]);
+    : appPlace
+      ? { lat: appPlace.lat, lon: appPlace.lon, height: 0, name: appPlace.name, source: "app", timeZone: appPlace.tz ?? paramTz }
+      : chosen), [ceiling, appPlace, chosen, paramTz]);
   const [ceilingHint, setCeilingHint] = useState(false);
   const [builderOpen, setBuilderOpen] = useState(false);
   const [builder, setBuilder] = useState<Omit<CeilingConfig, "place">>({
@@ -200,12 +212,16 @@ export function SolarVision() {
   /* ----------------------------------------------------------- ceiling mode */
 
   // A place in the link without a time zone gets one from the offline map.
+  const linkPlace = ceiling?.place ?? appPlace;
   useEffect(() => {
-    if (!ceiling?.place || ceiling.place.tz) return;
+    if (!linkPlace || linkPlace.tz) return;
     let alive = true;
-    void timeZoneAt(ceiling.place.lat, ceiling.place.lon).then((tz) => { if (alive) setParamTz(tz); });
+    void timeZoneAt(linkPlace.lat, linkPlace.lon).then((tz) => { if (alive) setParamTz(tz); });
     return () => { alive = false; };
-  }, [ceiling]);
+  }, [linkPlace]);
+
+  // Tell the app the page runs in app mode, so it can hand the back and place buttons to the page.
+  useEffect(() => { if (inApp) postToApp("hello"); }, [inApp]);
 
   // Keep the screen (and so the projector's picture) on all night.
   useEffect(() => {
@@ -297,8 +313,10 @@ export function SolarVision() {
     }
   }, []);
 
-  // Ask once on arrival when the browser already has permission; otherwise wait for the button.
+  // Ask once on arrival when the browser already has permission; otherwise wait for the button. Never in the app,
+  // which does not use the phone's location at all (read from the link itself: the first render does not have it).
   useEffect(() => {
+    if (parseAppLink(window.location.hash) && !parseCeiling(window.location.search)) return;
     let alive = true;
     navigator.permissions?.query({ name: "geolocation" as PermissionName })
       .then((p) => { if (alive && p.state === "granted") void locateMe(); })
@@ -491,7 +509,13 @@ export function SolarVision() {
       {/* The top stack: the bar, then the tool row under it, in normal flow, so neither can slide under the other. */}
       <div ref={headRef} className="sv-head" inert={immersive}>
       <header ref={topRef} className="sv-top">
-        <Link href="/" className="sv-brand" aria-label="Back to Ayudhas"><Logo size={26} /><span>Ayudhas</span></Link>
+        {inApp ? (
+          <button className="sv-chip sv-icon sv-back" onClick={() => postToApp("close")} aria-label="Close Solar Vision" title="Close">
+            <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden><path d="M15 5l-7 7 7 7" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
+          </button>
+        ) : (
+          <Link href="/" className="sv-brand" aria-label="Back to Ayudhas"><Logo size={26} /><span>Ayudhas</span></Link>
+        )}
         <h1 className="sv-title">Solar Vision</h1>
         <div className="sv-modes" role="tablist" aria-label="View">
           <button role="tab" aria-selected={mode === "sky"} onClick={() => setMode("sky")} aria-label="Rooftop sky">
@@ -501,7 +525,13 @@ export function SolarVision() {
             <span className="sv-wide">From space</span><span className="sv-narrow" aria-hidden>Space</span>
           </button>
         </div>
-        <button className="sv-place" onClick={() => setPlaceOpen((v) => !v)} aria-expanded={placeOpen} aria-controls="sv-place-panel">
+        <button
+          className="sv-place"
+          onClick={() => (inApp ? postToApp("place") : setPlaceOpen((v) => !v))}
+          aria-expanded={inApp ? undefined : placeOpen}
+          aria-controls={inApp ? undefined : "sv-place-panel"}
+          aria-label={inApp ? `Place: ${location.name}. Choose another city` : undefined}
+        >
           <span className="sv-dot" data-source={location.source} aria-hidden />
           <span className="sv-place-name">{location.name}</span>
           <small>{Math.abs(location.lat).toFixed(2)}°{location.lat >= 0 ? "N" : "S"} {Math.abs(location.lon).toFixed(2)}°{location.lon >= 0 ? "E" : "W"}</small>
@@ -511,7 +541,7 @@ export function SolarVision() {
         </button>
       </header>
 
-      {placeOpen && (
+      {placeOpen && !inApp && (
         <div id="sv-place-panel" className="sv-sheet sv-place-panel" role="dialog" aria-label="Choose a place">
           <button className="sv-btn sv-btn-primary" onClick={() => void locateMe()} disabled={locating}>
             {locating ? "Finding you…" : "Use my location"}
@@ -540,7 +570,7 @@ export function SolarVision() {
         </div>
       )}
 
-      {builderOpen && (
+      {builderOpen && !inApp && (
         <div className="sv-sheet sv-builder" role="dialog" aria-label="Ceiling view">
           <div className="sv-builder-head">
             <h2>Ceiling view</h2>
@@ -590,7 +620,7 @@ export function SolarVision() {
           <button className="sv-chip" onClick={() => look("moon", true)}>Moon close-up</button>
           <button className="sv-chip" onClick={() => look("sun")}>Find the Sun</button>
           <button className="sv-chip" aria-pressed={constellations} onClick={() => setConstellations((v) => !v)}>Constellations</button>
-          <button className="sv-chip" aria-expanded={builderOpen} onClick={() => setBuilderOpen((v) => !v)}>Ceiling</button>
+          {!inApp && <button className="sv-chip" aria-expanded={builderOpen} onClick={() => setBuilderOpen((v) => !v)}>Ceiling</button>}
           {canCompass && <button className="sv-chip" aria-pressed={compassOn} onClick={() => void toggleCompass()}>Point my phone</button>}
           <span className="sv-zoom">
             <button className="sv-chip" onClick={() => engineRef.current?.zoom(0.7)} aria-label="Zoom in">+</button>
@@ -675,8 +705,9 @@ export function SolarVision() {
           </ul>
           <p className="sv-note">
             Positions: Astronomy Engine (agrees with NASA JPL to about an arcminute), computed live in your browser. Earth: NASA GIBS (VIIRS) and textures by Solar System Scope (CC BY 4.0). Moon: NASA LRO
-            colour and elevation. Stars: d3-celestial (Hipparcos). Place names: BigDataCloud, OpenStreetMap.
+            colour and elevation. Stars: d3-celestial (Hipparcos).{inApp ? "" : " Place names: BigDataCloud, OpenStreetMap."}
           </p>
+          {inApp && <p className="sv-note">Your city stays on your phone: it is never sent to a server, and your device location is never used.</p>}
         </section>
       </aside>
 
