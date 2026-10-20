@@ -54,7 +54,7 @@ export const CHAPTERS: Chapter[] = [
   },
   {
     id: "pro",
-    name: "Ayudhas Pro",
+    name: "Ayudhas app",
     wide: { pos: [32, 5, 24], target: [0, 0, 0], fov: 30, frame: [0.8, 0.68] },
     tall: { pos: [32, 6, 26], target: [0, 0, 0], fov: 44, frame: [0.5, -0.3] },
     world: { exposure: 0.72, grid: 0.55, ghost: 0, tags: 0, spread: 0.66 },

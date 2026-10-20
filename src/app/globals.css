@@ -171,7 +171,7 @@ html.world-lite body::after { display: none; }
 
 .pill { display: inline-flex; align-items: center; gap: 0.45rem; padding: 0.3rem 0.75rem; border-radius: 999px; font-size: 0.78rem; font-weight: 700; border: 1px solid var(--edge); background: var(--glass); white-space: nowrap; }
 .pill::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; box-shadow: 0 0 10px currentColor; }
-.pill.live-web { color: var(--emerald); }
+.pill.live-web, .pill.live-android { color: var(--emerald); }
 .pill.android-testing { color: var(--amber); }
 .pill.planned { color: var(--violet); }
 

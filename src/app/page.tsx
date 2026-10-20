@@ -22,6 +22,10 @@ const jsonLd = {
   "@graph": [
     { "@type": "Organization", name: "Ayudhas", url: SITE.url, logo: `${SITE.url}/icon.svg`, email: SITE.email },
     { "@type": "WebSite", name: "Ayudhas", url: SITE.url },
+    {
+      "@type": "MobileApplication", name: "Ayudhas", operatingSystem: "Android", applicationCategory: "ProductivityApplication",
+      installUrl: SITE.playUrl, offers: { "@type": "Offer", price: "0", priceCurrency: "INR" },
+    },
   ],
 };
 
@@ -44,7 +48,7 @@ export default function Home() {
             </h1>
             <p className="gateway-tagline"><span className="grad">{SITE.tagline}</span></p>
             <p className="lede gateway-lede">
-              One home for useful digital tools: tasks, time and Panchang on Android, money on the web, and more to come.
+              One home for useful digital tools: tasks, time, alarms and Panchang on Android, money on the web, and more to come.
             </p>
             <div className="gateway-cta">
               <a className="btn btn-primary" href="#meaning">Explore Ayudhas</a>

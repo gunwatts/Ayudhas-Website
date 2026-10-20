@@ -9,15 +9,17 @@ export const SITE = {
   url: "https://ayudhas.com",
   tagline: "Tools for a Life in Motion.",
   description:
-    "Ayudhas is a growing collection of useful digital tools: Ayudhas Pro for tasks, time and Panchang on Android, and Ayudhas Finance on the web.",
+    "Ayudhas is a growing collection of useful digital tools: the Ayudhas app for tasks, time, alarms and Panchang on Google Play, and Ayudhas Finance on the web.",
   email: "gunwatts@gmail.com",
   financeUrl: "https://finance.ayudhas.com",
+  playUrl: "https://play.google.com/store/apps/details?id=com.gunwatts.lifetracker",
   apiBaseUrl: (process.env.NEXT_PUBLIC_API_BASE_URL || "https://api.ayudhas.com").replace(/\/$/, ""),
 };
 
-export type Status = "live-web" | "android-testing" | "planned";
+export type Status = "live-android" | "live-web" | "android-testing" | "planned";
 
 export const STATUS_LABEL: Record<Status, string> = {
+  "live-android": "On Google Play",
   "live-web": "Live on the web",
   "android-testing": "Android · closed testing",
   planned: "Planned",
@@ -40,7 +42,7 @@ export const DESTINATIONS: Destination[] = [
     id: "tasks",
     name: "Tasks",
     realm: "Productivity",
-    status: "android-testing",
+    status: "live-android",
     hue: "--blue",
     summary: "One-time tasks and repeating routines, with reminders that keep them in view.",
     points: [
@@ -49,14 +51,14 @@ export const DESTINATIONS: Destination[] = [
       "Done, postpone or skip with a reason",
       "Streaks and a Dedication Score",
     ],
-    product: "Ayudhas Pro",
-    action: { label: "See Ayudhas Pro", href: "#pro" },
+    product: "Ayudhas app",
+    action: { label: "See the Ayudhas app", href: "#pro" },
   },
   {
     id: "time",
     name: "Time",
     realm: "Daily life",
-    status: "android-testing",
+    status: "live-android",
     hue: "--cyan",
     summary: "See where your hours go: work, learning, food, exercise, sleep, travel and more.",
     points: [
@@ -65,14 +67,14 @@ export const DESTINATIONS: Destination[] = [
       "Daily and range analytics",
       "Your own categories and activities",
     ],
-    product: "Ayudhas Pro",
-    action: { label: "See Ayudhas Pro", href: "#pro" },
+    product: "Ayudhas app",
+    action: { label: "See the Ayudhas app", href: "#pro" },
   },
   {
     id: "panchang",
     name: "Panchang",
     realm: "Calendar & tradition",
-    status: "android-testing",
+    status: "live-android",
     hue: "--amber",
     summary: "The Hindu calendar for any day: tithi, nakshatra and the times of sun and moon.",
     points: [
@@ -80,9 +82,10 @@ export const DESTINATIONS: Destination[] = [
       "Sunrise, sunset, moonrise and moonset",
       "Moon-phase view and trends across the year",
       "Works offline, for dates within the included data",
+      "Sunrise and sunset alarms for a city you choose",
     ],
-    product: "Ayudhas Pro",
-    action: { label: "See Ayudhas Pro", href: "#pro" },
+    product: "Ayudhas app",
+    action: { label: "See the Ayudhas app", href: "#pro" },
   },
   {
     id: "finance",
@@ -113,21 +116,22 @@ export const DESTINATIONS: Destination[] = [
   },
 ];
 
-export const PRO = {
-  name: "Ayudhas Pro",
+/** The Android app on Google Play (package com.gunwatts.lifetracker), formerly Life Tracker. */
+export const APP = {
+  name: "Ayudhas",
   platform: "Android",
-  status: "In closed testing on Google Play",
-  formerly: "Life Tracker Pro",
-  promise: "Plan tasks, track your time and stay on course.",
-  traits: ["Works offline", "Your data stays on your device", "Back up and restore to a file you control", "Home-screen widget"],
+  status: "Available on Google Play",
+  formerly: "Life Tracker",
+  promise: "Plan tasks, track your time, wake up on time and stay on course.",
+  traits: ["Works offline", "Your data stays on your device", "Password-protected backups", "Home-screen widget"],
   tools: [
     {
       id: "tasks",
       name: "Task Manager",
       lines: [
         "Create one-time tasks and repeating routines",
-        "Set reminders, and postpone straight from the notification",
-        "Track streaks and your Dedication Score",
+        "Set reminders; mark done or snooze straight from the notification",
+        "Track streaks, insights and your Dedication Score",
         "See what is due today, what is coming up and what is done",
       ],
     },
@@ -142,17 +146,42 @@ export const PRO = {
       ],
     },
     {
+      id: "clock",
+      name: "Clock",
+      lines: [
+        "Alarms that ring even when the app is closed",
+        "Wake-up missions: maths, typing, memory, a QR code or a photo",
+        "Sunrise and sunset alarms for a city you choose",
+        "Stopwatch, timer and world clock",
+      ],
+    },
+    {
       id: "panchang",
       name: "Panchang",
       lines: [
         "Daily tithi and nakshatra",
         "Sunrise, sunset, moonrise and moonset",
-        "Moon phases and yearly trends",
+        "Solar Vision: the live 3D Sun, Moon and Earth",
         "Offline; shown on devices set to an Indian time zone",
       ],
     },
   ],
+  /** Also in the app, without a screen of their own on the site. */
+  more: ["finance (money, accounts and loans)", "water reminders", "quick notes"],
 };
+
+/** The early-access edition, where new tools are tested before they reach the Ayudhas app. */
+export const PRO = {
+  name: "Ayudhas Pro",
+  status: "Closed testing on Google Play",
+  formerly: "Life Tracker Pro",
+};
+
+/** Privacy policies, linked from the Play Store listings. */
+export const POLICIES = [
+  { slug: "ayudhasapp", app: "Ayudhas", packageId: "com.gunwatts.lifetracker", formerly: "Life Tracker" },
+  { slug: "ayudhaspro", app: "Ayudhas Pro", packageId: "com.gunwatts.lifetrackerpro", formerly: "Life Tracker Pro" },
+] as const;
 
 export type Story = { id: string; title: string; tool: string; steps: { title: string; text: string }[] };
 
@@ -161,7 +190,7 @@ export const STORIES: Story[] = [
   {
     id: "morning",
     title: "A morning with a list",
-    tool: "Tasks · Ayudhas Pro",
+    tool: "Tasks · Ayudhas app",
     steps: [
       { title: "7:00", text: "The phone shows today: four tasks, one of them a weekly routine." },
       { title: "9:30", text: "The reminder for the electricity bill arrives. Pay it, then mark it done right from the notification." },
@@ -172,7 +201,7 @@ export const STORIES: Story[] = [
   {
     id: "week",
     title: "Where did the week go?",
-    tool: "Time · Ayudhas Pro",
+    tool: "Time · Ayudhas app",
     steps: [
       { title: "Monday", text: "Tap Work when the laptop opens; tap Exercise on the way out." },
       { title: "Wednesday", text: "Forgot to start the timer for a class. “Start earlier” sets the real start time." },
@@ -183,7 +212,7 @@ export const STORIES: Story[] = [
   {
     id: "panchang",
     title: "Planning around the calendar",
-    tool: "Panchang · Ayudhas Pro",
+    tool: "Panchang · Ayudhas app",
     steps: [
       { title: "A date in mind", text: "A family event is being planned for a weekend next month." },
       { title: "Look it up", text: "Open Panchang and browse to that date. No internet needed." },

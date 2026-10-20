@@ -284,6 +284,9 @@ html.world-hot .gateway { cursor: pointer; }
 .pro-panel li { padding-left: 1.6rem; position: relative; animation: arrive 0.5s var(--ease-out) both; animation-delay: calc(var(--i, 0) * 45ms); }
 .pro-panel li::before { content: "✓"; position: absolute; left: 0; color: var(--emerald); font-weight: 800; }
 .pro-cta { display: flex; flex-wrap: wrap; gap: 0.8rem; }
+.pro-edition { display: grid; gap: 0.6rem; justify-items: start; }
+.pro-edition p { margin: 0; color: var(--muted); }
+.pro-edition b { color: var(--text); margin-right: 0.4rem; }
 .pro-feature { margin: clamp(2.5rem, 6vw, 4rem) 0 0; padding: 0.8rem; display: grid; gap: 0.6rem; }
 .pro-feature-media { border-radius: 16px; overflow: hidden; }
 .pro-feature img { width: 100%; aspect-ratio: 1024 / 500; transform-origin: 50% 40%; }
