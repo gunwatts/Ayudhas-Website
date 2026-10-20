@@ -33,18 +33,21 @@ test("choosing a destination shows its honest status", async ({ page }) => {
   await map.getByRole("button", { name: /Panchang/ }).click();
   const card = page.locator("article.destination");
   await expect(card.getByRole("heading", { name: "Panchang" })).toBeVisible();
-  await expect(card.getByText("Android · closed testing")).toBeVisible();
+  await expect(card.getByText("On Google Play")).toBeVisible();
   await map.getByRole("button", { name: /Finance/ }).click();
   await expect(card.getByText("Live on the web")).toBeVisible();
   await expect(card.getByRole("link", { name: /Open Ayudhas Finance/ })).toHaveAttribute("href", "https://finance.ayudhas.com");
 });
 
-test("Ayudhas Pro tabs switch screens and the test invite prefills the form", async ({ page }) => {
+test("Ayudhas app tabs switch screens, link to Google Play, and the Pro test invite prefills the form", async ({ page }) => {
   await page.goto("/#pro");
   await page.getByRole("tab", { name: "Panchang" }).click();
   await expect(page.getByRole("tabpanel")).toContainText("Daily tithi and nakshatra");
-  await expect(page.getByText("Coming to Google Play")).toBeVisible();
-  await page.getByRole("link", { name: /Ask to join the test/ }).click();
+  await page.getByRole("tab", { name: "Clock" }).click();
+  await expect(page.getByRole("tabpanel")).toContainText("Wake-up missions");
+  await expect(page.getByRole("link", { name: /Get it on Google Play/ }))
+    .toHaveAttribute("href", "https://play.google.com/store/apps/details?id=com.gunwatts.lifetracker");
+  await page.getByRole("link", { name: /Ask to join the Ayudhas Pro test/ }).click();
   await expect(page.getByLabel("Message")).toHaveValue(/join the Ayudhas Pro test/);
 });
 
@@ -112,7 +115,7 @@ test("headings revealed word by word keep their full accessible names", async ({
   for (const name of [
     "An instrument in the hand of the one who uses it.",
     "Every tool is a place you can visit.",
-    "Ayudhas Pro: tasks, time and Panchang in your pocket.",
+    "Ayudhas: tasks, time and Panchang in your pocket.",
     "What a good tool feels like.",
     "A map with room to grow.",
   ]) await expect(page.getByRole("heading", { level: 2, name, exact: true })).toHaveCount(1);
@@ -295,4 +298,17 @@ test("Solar Vision in the Ayudhas Pro app uses the app's city and never the devi
   expect(await page.evaluate(() => (window as unknown as { geoCalls: number }).geoCalls)).toBe(0);
   expect(lookups).toEqual([]);
   await ctx.close();
+});
+
+test("privacy policies for both apps are published at their Play Store addresses", async ({ page }) => {
+  for (const [path, app, pkg] of [
+    ["/privacypolicy/ayudhasapp/", "Ayudhas", "com.gunwatts.lifetracker"],
+    ["/privacypolicy/ayudhaspro/", "Ayudhas Pro", "com.gunwatts.lifetrackerpro"],
+  ]) {
+    await page.goto(path);
+    await expect(page.getByRole("heading", { level: 1, name: `${app} privacy policy` })).toBeVisible();
+    await expect(page.getByText(pkg, { exact: true })).toBeVisible();
+  }
+  await page.goto("/privacypolicy/");
+  await expect(page.getByRole("link", { name: "Ayudhas Pro" })).toHaveAttribute("href", "/privacypolicy/ayudhaspro/");
 });

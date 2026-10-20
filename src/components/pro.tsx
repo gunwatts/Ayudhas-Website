@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 
-import { PRO } from "@/content/site";
+import { APP, PRO, SITE } from "@/content/site";
 
 import { SplitHeading } from "./split-heading";
 
@@ -69,17 +69,35 @@ function PanchangScreen() {
   );
 }
 
-const SCREENS = { tasks: TasksScreen, time: TimeScreen, panchang: PanchangScreen } as const;
+function ClockScreen() {
+  return (
+    <div className="screen">
+      <div className="screen-head"><div><b>Alarms</b><small>Next alarm in 7 h 12 min</small></div></div>
+      <ul className="screen-list">
+        <li style={{ ["--c" as string]: "var(--amber)" }}>5:58 AM<small>Sunrise · Hyderabad · Daily</small></li>
+        <li style={{ ["--c" as string]: "var(--blue)" }}>6:30 AM<small>Weekdays · Mission: scan QR code</small></li>
+        <li style={{ ["--c" as string]: "var(--violet)" }}>8:00 AM<small>Weekends · Mission: maths</small></li>
+        <li className="done" style={{ ["--c" as string]: "var(--cyan)" }}>2:00 PM<small>Off · Nap</small></li>
+      </ul>
+      <p className="screen-sub">Stopwatch · Timer · World clock</p>
+    </div>
+  );
+}
 
-/** Scene 4: Ayudhas Pro, the Android app. Screens are illustrations based on the app's design, with sample data. */
+const SCREENS = { tasks: TasksScreen, time: TimeScreen, clock: ClockScreen, panchang: PanchangScreen } as const;
+
+/**
+ * Scene 4: the Ayudhas app on Google Play (formerly Life Tracker), and Ayudhas Pro, its early-access edition in
+ * closed testing. Screens are illustrations based on the app's design, with sample data.
+ */
 export function Pro() {
   const [tab, setTab] = useState<keyof typeof SCREENS>("tasks");
   const [dir, setDir] = useState(1);
   const tablistRef = useRef<HTMLDivElement>(null);
   const indicatorRef = useRef<HTMLSpanElement>(null);
   const Screen = SCREENS[tab];
-  const tool = PRO.tools.find((t) => t.id === tab)!;
-  const ids = PRO.tools.map((x) => x.id);
+  const tool = APP.tools.find((t) => t.id === tab)!;
+  const ids = APP.tools.map((x) => x.id);
 
   /** Switch screens; the new one slides in from the side of the tab that was chosen. */
   const choose = (next: string) => {
@@ -117,17 +135,19 @@ export function Pro() {
       <div className="wrap">
         <div className="scene-head reveal" data-depth="0.22">
           <span className="label">Android app</span>
-          <SplitHeading id="pro-title" parts={[{ text: "Ayudhas Pro", className: "grad", after: ":" }, " tasks, time and Panchang in your pocket."]} />
-          <p className="lede">{PRO.promise} The first app in the Ayudhas collection, formerly called {PRO.formerly}.</p>
+          <SplitHeading id="pro-title" parts={[{ text: "Ayudhas", className: "grad", after: ":" }, " tasks, time and Panchang in your pocket."]} />
+          <p className="lede">
+            {APP.promise} The first app in the Ayudhas collection, formerly called {APP.formerly}. Also inside: {APP.more.join(", ")}.
+          </p>
           <div className="pro-badges">
-            <span className="pill android-testing">{PRO.status}</span>
-            {PRO.traits.map((t) => <span key={t} className="trait">{t}</span>)}
+            <span className="pill live-android">{APP.status}</span>
+            {APP.traits.map((t) => <span key={t} className="trait">{t}</span>)}
           </div>
         </div>
 
         <div className="pro-grid">
           <div className="pro-device reveal">
-            <div className="device" data-tilt role="img" aria-label={`Illustration of the ${tool.name} screen in Ayudhas Pro, with sample data`}>
+            <div className="device" data-tilt role="img" aria-label={`Illustration of the ${tool.name} screen in Ayudhas, with sample data`}>
               <div className="device-notch" aria-hidden />
               <div key={tab} className="device-screen" data-dir={dir > 0 ? "next" : "prev"}><Screen /></div>
             </div>
@@ -135,9 +155,9 @@ export function Pro() {
           </div>
 
           <div className="pro-side">
-            <div ref={tablistRef} className="tabs glass" role="tablist" aria-label="Ayudhas Pro tools">
+            <div ref={tablistRef} className="tabs glass" role="tablist" aria-label="Ayudhas app tools">
               <span ref={indicatorRef} className="tab-pill" aria-hidden />
-              {PRO.tools.map((t) => (
+              {APP.tools.map((t) => (
                 <button
                   key={t.id}
                   type="button"
@@ -163,8 +183,14 @@ export function Pro() {
               <ul key={tab}>{tool.lines.map((l, i) => <li key={l} style={{ ["--i" as string]: i }}>{l}</li>)}</ul>
             </div>
             <div className="pro-cta">
-              <span className="btn btn-primary" aria-disabled="true">Coming to Google Play</span>
-              <a className="btn btn-ghost" href="#contact" onClick={askToJoin}>Ask to join the test →</a>
+              <a className="btn btn-primary" href={SITE.playUrl} rel="noopener">Get it on Google Play ↗</a>
+            </div>
+            <div className="glass pro-panel pro-edition">
+              <p>
+                <b>{PRO.name}</b> <span className="pill android-testing">{PRO.status}</span>
+              </p>
+              <p>The early-access edition (formerly {PRO.formerly}), where new tools are tried before they reach Ayudhas.</p>
+              <a className="btn btn-ghost" href="#contact" onClick={askToJoin}>Ask to join the Ayudhas Pro test →</a>
             </div>
           </div>
         </div>
@@ -173,7 +199,7 @@ export function Pro() {
           <div className="pro-feature-media">
             {/* eslint-disable-next-line @next/next/no-img-element -- static export; image is pre-optimised WebP */}
             <img src="/images/ayudhas-pro-feature.webp" width={1024} height={500} loading="lazy" decoding="async"
-              alt="Ayudhas Pro feature graphic: Today's tasks with a Dedication Score of 86, the Time Tracker, and a reminder notification with Mark done and Postpone." />
+              alt="Ayudhas feature graphic: Today's tasks with a Dedication Score of 86, the Time Tracker, and a reminder notification with Mark done and Postpone." />
           </div>
           <figcaption className="caption">From the Ayudhas Pro store listing.</figcaption>
         </figure>

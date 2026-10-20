@@ -1,7 +1,7 @@
 # Ayudhas website
 
-The brand website at **https://ayudhas.com**: what Ayudhas means, its tools (Ayudhas Pro on Android, Ayudhas Finance
-on the web), and a contact form. The finance app itself lives in the separate repo `Ayudhas-Frontend` at
+The brand website at **https://ayudhas.com**: what Ayudhas means, its tools (the Ayudhas app on Google Play, formerly Life Tracker; Ayudhas Pro, its early-access edition in closed
+testing; Ayudhas Finance on the web), privacy policies for both Android apps, and a contact form. The finance app itself lives in the separate repo `Ayudhas-Frontend` at
 https://finance.ayudhas.com.
 
 ## Stack
@@ -86,6 +86,8 @@ https://finance.ayudhas.com.
   post-processing lens, `objects.ts` (sky, stars, dust, mark, tools, floor) and `textures.ts` the procedural pieces. `src/lib/scroll-conductor.ts` holds the pure scroll maths (unit tested).
 - `.claude/skills/`: the design and motion skills used to build this (see its README for sources and licence).
 - `src/app/[...legacy]/`: old finance addresses on ayudhas.com forward to finance.ayudhas.com (query and #hash kept).
+- `src/app/privacypolicy/`: the apps' privacy policies (`/privacypolicy/ayudhasapp/`, `/privacypolicy/ayudhaspro/`),
+  linked from their Play Store listings. One text in `src/components/privacy-policy.tsx`; keep it in step with the apps.
 - `public/`: `CNAME` (ayudhas.com), `og.png` share image, icons, Ayudhas Pro images from its store listing.
 
 ## Commands

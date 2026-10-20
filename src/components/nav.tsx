@@ -10,7 +10,7 @@ import { Logo } from "./logo";
 const LINKS = [
   { href: "#meaning", label: "Meaning" },
   { href: "#universe", label: "Tools" },
-  { href: "#pro", label: "Ayudhas Pro" },
+  { href: "#pro", label: "Ayudhas app" },
   { href: "#stories", label: "Stories" },
   { href: "#future", label: "Future" },
   { href: "#contact", label: "Contact" },

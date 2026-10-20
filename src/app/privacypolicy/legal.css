@@ -1,0 +1,11 @@
+/* Privacy policy pages: plain, readable text on the site's dark background. */
+.legal { max-width: 46rem; margin: 0 auto; padding: clamp(2.5rem, 8vw, 5rem) var(--gutter) 5rem; line-height: 1.65; }
+.legal h1 { font-size: clamp(1.9rem, 6vw, 2.8rem); line-height: 1.15; margin: 0.6rem 0 0.8rem; }
+.legal h2 { font-size: 1.25rem; margin: 2.2rem 0 0.6rem; }
+.legal p, .legal li, .legal dd { color: var(--muted); }
+.legal ul { padding-left: 1.2rem; display: grid; gap: 0.4rem; }
+.legal dt { font-weight: 700; margin-top: 1rem; }
+.legal dd { margin: 0.2rem 0 0; }
+.legal a { color: var(--cyan); }
+.legal code { font-family: var(--font-mono), monospace; font-size: 0.9em; overflow-wrap: anywhere; }
+.legal-meta { font-size: 0.92rem; }

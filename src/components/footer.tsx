@@ -14,6 +14,7 @@ export function Footer() {
         </div>
         <nav aria-label="Products" className="footer-col">
           <span className="label">Products</span>
+          <a href={SITE.playUrl} rel="noopener">Ayudhas · Google Play ↗</a>
           <a href={SITE.financeUrl}>Ayudhas Finance ↗</a>
           <a href="#pro">Ayudhas Pro · Android (closed testing)</a>
           <Link href="/solar-vision/">Solar Vision · live Sun &amp; Moon</Link>
@@ -28,6 +29,7 @@ export function Footer() {
           <span className="label">Contact</span>
           <a href={`mailto:${SITE.email}`}>{SITE.email}</a>
           <a href="#contact">Contact form</a>
+          <Link href="/privacypolicy/">Privacy policies</Link>
         </div>
       </div>
       <div className="footer-mark" aria-hidden="true">
